@@ -9,5 +9,5 @@ repos:
     rev: v0.15.7
     hooks:
       - id: ruff        
-        args: [ --fix ] # Автоматически исправлять, что можно
+        args: [ --fix ]
       - id: ruff-format 

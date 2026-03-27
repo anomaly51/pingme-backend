@@ -1,10 +1,19 @@
-# dockerfile
-FROM python:3.11-slim
+FROM python:3.12-slim
+
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VERSION=2.0.0 \
+    POETRY_VIRTUALENVS_CREATE=false
 
 WORKDIR /code
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir "poetry==$POETRY_VERSION"
+
+COPY pyproject.toml poetry.lock ./
+
+
+RUN poetry install --only main --no-interaction --no-ansi --no-root
 
 COPY ./app /code/app
 

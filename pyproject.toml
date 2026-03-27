@@ -1,43 +1,62 @@
-
-# --- Настройки Ruff ---
 [tool.ruff]
-# Длина строки
+
 line-length = 100
-# Папки, которые Ruff должен игнорировать
-exclude = [".git", ".venv", "venv", "__pycache__", "build", "dist", ".env", ".cache"]
+exclude = [".git", ".venv", "venv", "__pycache__", "build", "dist", ".env", ".cache", "poetry.lock"]
+
 
 [tool.ruff.lint]
-# Список правил
-# E, W - ошибки и ворнинги pycodestyle
-# F - ошибки Pyflakes (логика, неиспользуемые переменные)
-# I - Isort (сортировка импортов)
-# B - Bugbear (находит вероятные баги и антипаттерны)
-# C90 - Сложность кода (McCabe complexity)
-# UP - Pyupgrade (предлагает современный синтаксис Python)
+
 select = ["E", "W", "F", "I", "B", "C90", "UP"]
-ignore = ["D100", "D104"] # Игнорировать отсутствие докстрингов в модулях
+ignore = ["D100", "D104"]
 
 
 [tool.ruff.lint.isort]
-# Группировка импортов
+
 combine-as-imports = true
 lines-after-imports = 2
 
+
 [tool.ruff.format]
-# Настройки форматирования кода
+
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 
-# --- Настройки Pytest ---
+
 [tool.pytest.ini_options]
+
 testpaths = ["tests"]
 python_files = "test_*.py"
-# Показывать подробный вывод и отчет о покрытии (если установлен pytest-cov)
 addopts = "-ra -q --doctest-modules"
 
-# --- Настройки MyPy ---
+
 [tool.mypy]
-python_version = "3.10"
+
+python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+[project]
+name = "project-root"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Kostya",email = "fesenko.kostya576@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi (>=0.135.2,<0.136.0)",
+    "uvicorn (>=0.42.0,<0.43.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.0.2,<10.0.0)",
+    "ruff (>=0.15.8,<0.16.0)",
+    "mypy (>=1.19.1,<2.0.0)"
+]
