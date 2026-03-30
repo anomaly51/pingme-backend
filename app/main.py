@@ -1,9 +1,14 @@
 from fastapi import FastAPI
 
 
-app = FastAPI()
+app = FastAPI(
+    title="ping me Project API", description="FastAPI with database PostgreSQL.", version="0.1.0"
+)
 
 
-@app.get("/")
+@app.get("/", tags=["System Checks"])
 async def root():
-    return {"message": "Hello world"}
+    """
+    **Check server status.**
+    """
+    return {"message": "Server is running!"}
