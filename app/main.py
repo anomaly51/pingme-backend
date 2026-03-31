@@ -1,9 +1,29 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
+from db.database import Base, engine
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield
 
 
-@app.get("/")
+app = FastAPI(
+    title="ping me Project API",
+    description="FastAPI with database PostgreSQL.",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+
+@app.get("/", tags=["System Checks"])
 async def root():
-    return {"message": "Hello world"}
+    """
+    **Check server status.**
+    """
+    return {"message": "Server is running!"}

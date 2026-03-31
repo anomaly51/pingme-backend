@@ -1,0 +1,8 @@
+.git
+.env
+__pycache__
+.ruff_cache
+tests/
+.github/
+README.md
+.pre-commit-config.yaml

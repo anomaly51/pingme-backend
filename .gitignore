@@ -1,16 +1,2 @@
-.venv
-.venv/
-__pycache__/
-*.pyc
-
 .env
-env/
-ENV/
-env.bak/
-
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+.ruff_cache
