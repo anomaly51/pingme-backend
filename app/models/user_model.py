@@ -4,7 +4,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.database import Base
 
 
-# Сама модель пользователя
 class User(Base):
     __tablename__ = "users"
 
