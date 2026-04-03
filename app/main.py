@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.routers import auth
 from db.database import Base, engine
 
 
@@ -27,3 +28,6 @@ async def root():
     **Check server status.**
     """
     return {"message": "Server is running!"}
+
+
+app.include_router(auth.router)

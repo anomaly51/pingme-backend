@@ -6,3 +6,4 @@ tests/
 .github/
 README.md
 .pre-commit-config.yaml
+.vscode/
