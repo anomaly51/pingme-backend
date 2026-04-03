@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.database import Base
@@ -21,3 +21,14 @@ class BlockedToken(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Form(Base):
+    __tablename__ = "forms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+
+    form_structure: Mapped[dict] = mapped_column(JSON, nullable=False)
+    schedule_crons: Mapped[list] = mapped_column(JSON, nullable=False)
