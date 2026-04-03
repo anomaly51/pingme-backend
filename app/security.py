@@ -85,7 +85,7 @@ async def get_current_user(
 ) -> str:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Не удалось проверить учетные данные",
+        detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -96,7 +96,7 @@ async def get_current_user(
     if is_blocked:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Этот токен был аннулирован (выполнен выход из системы).",
+            detail="This token has been revoked (logged out).",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -109,7 +109,7 @@ async def get_current_user(
     except ExpiredSignatureError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Срок действия токена истек",
+            detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
     except PyJWTError as e:
