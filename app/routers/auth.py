@@ -49,7 +49,7 @@ async def register_user(user_data: UserCreate, db: AsyncSession = Depends(get_db
 
     confirmation_token = create_confirmation_token(new_user.email)
 
-    base_url = os.getenv("APP_BASE_URL", "http://127.0.0.1:8000")
+    base_url = os.getenv("APP_BASE_URL")
     confirmation_link = f"{base_url}/confirm-email/{confirmation_token}"
 
     print("\n--- SEND EMAIL ---")
