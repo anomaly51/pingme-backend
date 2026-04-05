@@ -1,0 +1,16 @@
+name: Hello World CI
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  hello-job:
+    runs-on: argocd-runners
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Say Hello
+        run: echo "Hello World! CI is working on ArgoCD runner."
