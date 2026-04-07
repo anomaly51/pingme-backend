@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.routers import answers, auth, forms
+from app.routers import answers, auth, forms, study_tracking_router
 from db.database import Base, engine
 
 
@@ -33,3 +33,4 @@ async def root():
 app.include_router(auth.router)
 app.include_router(forms.router)
 app.include_router(answers.router)
+app.include_router(study_tracking_router.router)
