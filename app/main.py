@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
 
+import socketio
 from fastapi import FastAPI
 
 from app.routers import answers, auth, forms, study_tracking_router
 from db.database import Base, engine
+
+from .sockets import sio
 
 
 @asynccontextmanager
@@ -16,7 +19,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ping me Project API",
-    description="FastAPI with database PostgreSQL.",
+    description="FastAPI with PostgreSQL database.",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -34,3 +37,4 @@ app.include_router(auth.router)
 app.include_router(forms.router)
 app.include_router(answers.router)
 app.include_router(study_tracking_router.router)
+app = socketio.ASGIApp(sio, other_asgi_app=app)
