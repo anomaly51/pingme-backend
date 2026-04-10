@@ -18,5 +18,4 @@ class FormUpdate(FormBase):
 
 
 class AnswerCreate(BaseModel):
-    form_id: int
     answers_data: dict[str, Any]
