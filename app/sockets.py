@@ -6,10 +6,7 @@ sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
 @sio.event
 async def connect(sid, environ, auth):
-    """
-    Triggered when a client connects to the socket.
-    We expect the client to pass user_id on connection.
-    """
+
     if auth and "user_id" in auth:
         user_id = auth["user_id"]
         await sio.enter_room(sid, f"user_{user_id}")
