@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 import socketio
 from fastapi import FastAPI
 
-from app.routers import answers, auth, forms, study_tracking_router
+from app.api.v1.endpoints import answers, auth, forms, study_tracking_router
 from db.database import Base, engine
 
 from .sockets import sio
