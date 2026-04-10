@@ -39,7 +39,7 @@ class TrackingService:
         }
 
         for m_id in manager_ids:
-            await sio.emit("new_study_data", payload, room=f"user_{m_id}")
+            await sio.emit("study_record.created", payload, room=f"user:{m_id}")
 
         return {"message": "Data added to Google Sheet"}
 

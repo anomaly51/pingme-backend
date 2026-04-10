@@ -35,11 +35,13 @@ async def get_all_forms(
     ]
 
 
-@router.get("/{id}")
+@router.get("/{form_id}")
 async def get_form_by_id(
-    id: int, user: User = Depends(get_current_user_obj), form_service: FormService = Depends()
+    form_id: int,
+    user: User = Depends(get_current_user_obj),
+    form_service: FormService = Depends(),
 ):
-    form = await form_service.get_form_by_id(id, user)
+    form = await form_service.get_form_by_id(form_id, user)
     return {
         "form_id": form.id,
         "title": form.title,
@@ -48,20 +50,20 @@ async def get_form_by_id(
     }
 
 
-@router.put("/{id}")
+@router.put("/{form_id}")
 async def update_form(
-    id: int,
+    form_id: int,
     form_data: FormUpdate,
     user: User = Depends(get_current_user_obj),
     form_service: FormService = Depends(),
 ):
-    await form_service.update_form(id, form_data, user)
+    await form_service.update_form(form_id, form_data, user)
     return {"message": "Form updated successfully"}
 
 
-@router.delete("/{id}")
+@router.delete("/{form_id}")
 async def delete_form(
-    id: int, user: User = Depends(get_current_user_obj), form_service: FormService = Depends()
+    form_id: int, user: User = Depends(get_current_user_obj), form_service: FormService = Depends()
 ):
-    await form_service.delete_form(id, user)
+    await form_service.delete_form(form_id, user)
     return {"message": "Form has been deleted"}
