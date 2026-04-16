@@ -1,0 +1,24 @@
+name: Build and Push to Forgejo
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: argocd-runners
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t 192.168.1.154/forgejoadmin/pingme-backend:latest .
+
+      - name: Login to Forgejo Registry
+        run: echo "ForgejoPassword123!" | docker login 192.168.1.154 -u forgejoadmin --password-stdin
+
+      - name: Push to Forgejo
+        run: docker push 192.168.1.154/forgejoadmin/pingme-backend:latest
+
