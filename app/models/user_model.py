@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.database import Base
@@ -13,6 +14,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     is_email_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    roles = Column(ARRAY(String), default=list, server_default="{}")
 
 
 class BlockedToken(Base):

@@ -1,8 +1,8 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user_model import Answer, User
+from app.models.user_model import User
 from app.schemas.study_schemas import StudyTrackingCreate
 from app.services.study_tracking import confirm_study_data, update_study_data
 from app.sockets import sio
@@ -26,7 +26,7 @@ class TrackingService:
             email=user.email, activity=data.activity, hours=data.hours_spent
         )
 
-        manager_query = select(Answer.user_id).where(Answer.form_id == 17).distinct()
+        manager_query = select(User.id).where(User.roles.contains(["manager"]), User.id != user.id)
         result = await self.db.execute(manager_query)
         manager_ids = result.scalars().all()
 
@@ -44,12 +44,7 @@ class TrackingService:
         return {"message": "Data added to Google Sheet"}
 
     async def confirm_study(self, confirm_name: str, user: User) -> dict:
-        manager_name = EMAIL_TO_NAME.get(user.email)
-
-        if not manager_name:
-            raise HTTPException(
-                status_code=403, detail="Your account does not have rights to verify."
-            )
+        manager_name = user.email.split("@")[0].capitalize()
 
         await confirm_study_data(student_name=confirm_name, manager_name=manager_name)
 

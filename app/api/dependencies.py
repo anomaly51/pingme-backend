@@ -12,6 +12,7 @@ from db.database import get_db
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -62,3 +63,17 @@ async def get_current_user_obj(
         raise HTTPException(status_code=401, detail="User not found")
 
     return user
+
+
+class RoleChecker:
+    def __init__(self, allowed_roles: list[str]):
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, user: User = Depends(get_current_user_obj)) -> User:
+        for role in self.allowed_roles:
+            if role not in user.roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Access denied. Required role: {role}",
+                )
+        return user
