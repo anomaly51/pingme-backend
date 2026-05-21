@@ -1,7 +1,7 @@
 import re
 from typing import Annotated
 
-from pydantic import AfterValidator, Field
+from pydantic import AfterValidator, BaseModel, EmailStr, Field
 
 
 def validate_password_complexity(value: str) -> str:
@@ -17,3 +17,12 @@ def validate_password_complexity(value: str) -> str:
 StrongPassword = Annotated[
     str, Field(min_length=8, max_length=50), AfterValidator(validate_password_complexity)
 ]
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(min_length=8)
+    new_password: StrongPassword
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr

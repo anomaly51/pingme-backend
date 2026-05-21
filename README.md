@@ -15,7 +15,7 @@ A fast and reliable backend API built with FastAPI and PostgreSQL.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/anomaly51/pingme-backend
+git clone https://github.com/Gamubells/pingme-backend
 cd ping-me
 ```
 
@@ -70,10 +70,28 @@ Once the application is running, open your web browser and navigate to:
 
 ### 8. Running Tests
 
-To run the test suite:
+Start the isolated PostgreSQL test database:
+
+```bash
+docker compose up -d test_db
+```
+
+Run the test suite locally:
 
 ```bash
 poetry run pytest
+```
+
+Or run tests inside Docker:
+
+```bash
+docker compose --profile testing run --rm test_runner
+```
+
+The local test database URL is:
+
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://test_user:test_password@localhost:5435/test_db
 ```
 
 ### Stopping the project

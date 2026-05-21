@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,16 +13,34 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    first_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    birth_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_email_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
-    roles = Column(ARRAY(String), default=list, server_default="{}")
+    roles = Column(ARRAY(String), default=lambda: ["customer"], server_default="{}")
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=text("now()"),
+    )
 
 
 class BlockedToken(Base):
     __tablename__ = "blocked_tokens"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=text("now()"),
+    )
 
 
 class Form(Base):
