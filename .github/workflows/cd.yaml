@@ -1,20 +1,35 @@
-name: Build and Push to Forgejo
+name: Deploy
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-push:
-    runs-on: argocd-runners
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - run: docker build -t 192.168.1.154/forgejoadmin/pingme-backend:latest .
-
-      - run: echo "ForgejoPassword123!" | docker login 192.168.1.154 -u forgejoadmin --password-stdin
-
-      - run: docker push 192.168.1.154/forgejoadmin/pingme-backend:latest
-
+  deploy:
+    uses: anomaly51/github-actions-toolkit/.github/workflows/argocd-app-release.yml@v11
+    with:
+      app-name: PingMe Backend
+      runner: anomaly51-runner
+      timeout-minutes: 15
+      concurrency-group: pingme-backend
+      registry: harbor.api-api-api.com
+      image-project: pingme
+      image-name: backend
+      gitops-repository: anomaly51/workload-2-k3s-argocd
+      deployment-path: apps/pingme-backend/deployment.yaml
+      app-url: https://pingme-backend.api-api-api.com
+      health-url: https://pingme-backend.api-api-api.com/health
+      sync-attempts: "45"
+      live-version-attempts: "120"
+      live-version-interval-seconds: "2"
+    secrets:
+      registry_username: ${{ secrets.HARBOR_PUSH_USERNAME }}
+      registry_password: ${{ secrets.HARBOR_PUSH_PASSWORD }}
+      manifest_repository_token: ${{ secrets.DEVOPS_REPO_TOKEN }}
+      telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      telegram_chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
