@@ -31,5 +31,9 @@ jobs:
       registry_username: ${{ secrets.HARBOR_PUSH_USERNAME }}
       registry_password: ${{ secrets.HARBOR_PUSH_PASSWORD }}
       manifest_repository_token: ${{ secrets.DEVOPS_REPO_TOKEN }}
+      deployment_server: ${{ secrets.ARGOCD_SERVER }}
+      deployment_auth_token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+      deployment_resolve_ip: ${{ secrets.ARGOCD_RESOLVE_IP }}
+      deployment_insecure: ${{ secrets.ARGOCD_INSECURE }}
       telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       telegram_chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
