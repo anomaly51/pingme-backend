@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 import jwt
 from fastapi import Depends, HTTPException, status
+from jwt import PyJWKClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,10 @@ from app.core.security import (
 from app.models.user_model import BlockedToken, User
 from app.schemas.user_schemas import UserCreate
 from db.database import get_db
+
+
+GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
 
 
 class AuthService:
@@ -105,6 +110,78 @@ class AuthService:
 
         access_token = create_access_token(data={"sub": username})
         return {"access_token": access_token, "token_type": "bearer"}
+
+    async def login_google(self, id_token: str) -> dict:
+        payload = self._verify_google_id_token(id_token)
+        email = payload.get("email")
+
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Google token does not contain email",
+            )
+
+        query = select(User).where(User.email == email)
+        result = await self.db.execute(query)
+        user = result.scalars().first()
+
+        if not user:
+            user = User(
+                email=email,
+                hashed_password=get_password_hash(os.urandom(32).hex()),
+                is_email_confirmed=True,
+            )
+            self.db.add(user)
+            await self.db.commit()
+            await self.db.refresh(user)
+        elif not user.is_email_confirmed:
+            user.is_email_confirmed = True
+            await self.db.commit()
+
+        access_token = create_access_token(data={"sub": email})
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    def _verify_google_id_token(self, id_token: str) -> dict:
+        audiences = [
+            client_id.strip()
+            for client_id in os.getenv("GOOGLE_CLIENT_IDS", "").split(",")
+            if client_id.strip()
+        ]
+
+        if not audiences:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Google auth is not configured",
+            )
+
+        try:
+            jwks_client = PyJWKClient(GOOGLE_JWKS_URL)
+            signing_key = jwks_client.get_signing_key_from_jwt(id_token)
+            payload = jwt.decode(
+                id_token,
+                signing_key.key,
+                algorithms=["RS256"],
+                audience=audiences,
+            )
+        except jwt.PyJWTError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Google token",
+            ) from exc
+
+        if payload.get("iss") not in GOOGLE_ISSUERS:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Google token issuer",
+            )
+
+        if payload.get("email_verified") is not True:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Google email is not verified",
+            )
+
+        return payload
 
     async def logout_user(self, token: str) -> dict:
         try:

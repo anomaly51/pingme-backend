@@ -43,6 +43,14 @@ Create a .env file in the root directory to set up your database credentials. Yo
 cp .env.example .env
 ```
 
+For Google login, set the Web Client ID from Google Auth Platform:
+
+```bash
+GOOGLE_CLIENT_IDS=<google-web-client-id>
+```
+
+Multiple client IDs can be provided as a comma-separated list.
+
 ### 5. Run locally (without Docker)
 
 For development, you can run the application locally:
