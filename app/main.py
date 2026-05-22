@@ -1,28 +1,17 @@
 import os
-from contextlib import asynccontextmanager
 
 import socketio
 from fastapi import FastAPI
 
 from app.api.v1.endpoints import answers, auth, forms, study_tracking_router
-from db.database import Base, engine
 
 from .sockets import sio
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield
 
 
 app = FastAPI(
     title="ping me Project API",
     description="FastAPI with PostgreSQL database.",
     version="0.1.0",
-    lifespan=lifespan,
 )
 
 
@@ -40,6 +29,7 @@ async def health():
 
 
 app.include_router(auth.router)
+app.include_router(auth.users_router)
 app.include_router(forms.router)
 app.include_router(answers.router)
 app.include_router(study_tracking_router.router)
