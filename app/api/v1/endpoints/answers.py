@@ -19,3 +19,21 @@ async def create_answer(
     answer_id = await answer_service.create_answer(form_id, answer_data, user)
 
     return {"answer_id": answer_id, "message": "Answers saved"}
+
+
+@router.get("")
+async def get_form_answers(
+    form_id: int,
+    user: User = Depends(get_current_user_obj),
+    answer_service: AnswerService = Depends(),
+):
+    answers = await answer_service.get_form_answers(form_id, user)
+    return [
+        {
+            "answer_id": answer.id,
+            "form_id": answer.form_id,
+            "answers_data": answer.answers_data,
+            "created_at": answer.created_at.isoformat() if answer.created_at else None,
+        }
+        for answer in answers
+    ]
