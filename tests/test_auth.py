@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.core import security
 from app.core.security import create_refresh_token, decode_app_token
-from app.models.user_model import BlockedToken, EmailAuthCode, User
+from app.models.user_model import AuthSession, BlockedToken, EmailAuthCode, User
 from app.services.auth_service import AuthService
 from tests.conftest import (
     TEST_PASSWORD,
@@ -175,6 +175,17 @@ async def test_login_wrong_password_returns_401(async_client):
         data={"username": user["email"], "password": "WrongPass999"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_unconfirmed_email_returns_403(async_client):
+    user = await register_user(async_client, confirm_email=False)
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": user["email"], "password": TEST_PASSWORD},
+    )
+
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -362,7 +373,11 @@ async def test_google_login_supports_multiple_client_ids(monkeypatch, async_clie
 
 @pytest.mark.asyncio
 async def test_google_login_confirms_existing_unconfirmed_user(monkeypatch, async_client):
-    user = await register_user(async_client, email=f"google_existing_{uuid.uuid4().hex}@test.com")
+    user = await register_user(
+        async_client,
+        email=f"google_existing_{uuid.uuid4().hex}@test.com",
+        confirm_email=False,
+    )
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-client-id")
     monkeypatch.setattr(
         AuthService,
@@ -605,7 +620,7 @@ async def test_refresh_invalid_inputs_return_errors(async_client):
     missing = await async_client.post("/auth/refresh", json={})
     assert invalid.status_code == 401
     assert access.status_code == 401
-    assert missing.status_code == 422
+    assert missing.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -764,6 +779,39 @@ async def test_password_reset_rejects_reused_code(monkeypatch, async_client):
 
 
 @pytest.mark.asyncio
+async def test_password_reset_locks_code_after_too_many_attempts(monkeypatch, async_client):
+    sent_codes: list[str] = []
+
+    def fake_send(_email: str, code: str) -> None:
+        sent_codes.append(code)
+
+    monkeypatch.setattr("app.services.auth_service.send_password_reset_code", fake_send)
+    user = await register_user(async_client)
+    await async_client.post("/auth/password-reset/request", json={"email": user["email"]})
+
+    for _ in range(5):
+        response = await async_client.post(
+            "/auth/password-reset/confirm",
+            json={
+                "email": user["email"],
+                "code": "000000",
+                "new_password": "ResetPass123",
+            },
+        )
+        assert response.status_code == 400
+
+    locked = await async_client.post(
+        "/auth/password-reset/confirm",
+        json={
+            "email": user["email"],
+            "code": sent_codes[-1],
+            "new_password": "ResetPass123",
+        },
+    )
+    assert locked.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_login_cleans_expired_blocked_tokens(async_client):
     user = await register_user(async_client)
     async with _session_maker() as db:
@@ -837,6 +885,46 @@ async def test_multiple_sessions_same_user(async_client):
     )
     assert (await async_client.get("/auth/me", headers=first["headers"])).status_code == 401
     assert (await async_client.get("/auth/me", headers=second["headers"])).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_sessions_can_be_listed_and_revoked(async_client):
+    session = await reg_and_login(async_client)
+    sessions = await async_client.get("/auth/sessions", headers=session["headers"])
+    assert sessions.status_code == 200
+    assert len(sessions.json()) == 1
+    assert sessions.json()[0]["current"] is True
+
+    revoke = await async_client.delete(
+        f"/auth/sessions/{sessions.json()[0]['session_id']}",
+        headers=session["headers"],
+    )
+    assert revoke.status_code == 200
+
+    response = await async_client.get("/auth/me", headers=session["headers"])
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_revoke_other_sessions_keeps_current_session(async_client):
+    user = await register_user(async_client)
+    first = await login_user(async_client, user["email"])
+    second = await login_user(async_client, user["email"])
+
+    response = await async_client.delete("/auth/sessions", headers=second["headers"])
+    assert response.status_code == 200
+
+    assert (await async_client.get("/auth/me", headers=first["headers"])).status_code == 401
+    assert (await async_client.get("/auth/me", headers=second["headers"])).status_code == 200
+
+    async with _session_maker() as db:
+        sessions = (
+            (await db.execute(select(AuthSession).where(AuthSession.user_id == user["id"])))
+            .scalars()
+            .all()
+        )
+        assert len(sessions) == 2
+        assert sum(session.revoked_at is not None for session in sessions) == 1
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -29,15 +30,17 @@ from app.core.security import (
     verify_confirmation_token,
     verify_password,
 )
-from app.models.user_model import BlockedToken, EmailAuthCode, User
+from app.models.user_model import AuthSession, BlockedToken, EmailAuthCode, User
 from app.schemas.user_schemas import UserCreate
 from app.services.email_service import send_email_verification_code, send_password_reset_code
-from db.database import get_db
+from db.database import SessionLocal, get_db
 
 
 EMAIL_VERIFICATION_PURPOSE = "email_verification"
 PASSWORD_RESET_PURPOSE = "password_reset"
 AUTH_CODE_EXPIRE_MINUTES = 15
+AUTH_CODE_MAX_ATTEMPTS = 5
+CLEANUP_INTERVAL_SECONDS = 60 * 60
 
 
 class AuthService:
@@ -88,7 +91,13 @@ class AuthService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return self._token_pair(user.email)
+        if not user.is_email_confirmed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Email is not confirmed",
+            )
+
+        return await self._token_pair(user)
 
     async def authenticate_google_user(self, id_token: str) -> User:
         google_client_ids = self._google_client_ids()
@@ -301,7 +310,8 @@ class AuthService:
 
         email = payload.get("sub")
         jti = payload.get("jti")
-        if not email or not jti:
+        session_id = payload.get("sid")
+        if not email or not jti or not session_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Refresh token не содержит обязательные claims",
@@ -317,8 +327,18 @@ class AuthService:
             )
 
         self._ensure_token_is_new_enough(payload, user)
+        session = await self._get_active_session(session_id, user.id)
+        if not session or session.refresh_jti != jti:
+            await self._revoke_session_by_id(session_id)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token reuse detected. Авторизуйтесь заново.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         blocked = await self._get_blocked_token(jti)
         if blocked:
+            await self._revoke_session(session)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Этот refresh token был отозван или уже использован. Авторизуйтесь заново.",
@@ -327,7 +347,7 @@ class AuthService:
 
         await self._block_jti(jti, datetime.fromtimestamp(payload["exp"], tz=UTC))
         await self.db.commit()
-        return self._token_pair(user.email)
+        return await self._token_pair(user, session=session)
 
     async def logout(self, access_token: str, refresh_token: str | None = None) -> None:
         await self.cleanup_expired_blocked_tokens()
@@ -340,6 +360,7 @@ class AuthService:
             jti, expires_at = record
             if not await self._get_blocked_token(jti):
                 await self._block_jti(jti, expires_at)
+            await self._revoke_session_by_token(token)
 
         await self.db.commit()
 
@@ -378,6 +399,65 @@ class AuthService:
         await self.db.commit()
         return result.rowcount or 0
 
+    async def cleanup_expired_auth_sessions(self) -> int:
+        result = await self.db.execute(
+            delete(AuthSession).where(AuthSession.expires_at <= datetime.now(UTC))
+        )
+        await self.db.commit()
+        return result.rowcount or 0
+
+    async def list_sessions(self, user: User, current_token: str | None = None) -> list[dict]:
+        current_session_id = None
+        if current_token:
+            try:
+                current_session_id = decode_app_token(current_token).get("sid")
+            except jwt.PyJWTError:
+                current_session_id = None
+
+        result = await self.db.execute(
+            select(AuthSession)
+            .where(
+                AuthSession.user_id == user.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(UTC),
+            )
+            .order_by(AuthSession.last_used_at.desc())
+        )
+        return [
+            {
+                "session_id": session.session_id,
+                "created_at": session.created_at.isoformat(),
+                "last_used_at": session.last_used_at.isoformat(),
+                "expires_at": session.expires_at.isoformat(),
+                "current": session.session_id == current_session_id,
+            }
+            for session in result.scalars().all()
+        ]
+
+    async def revoke_session(self, user: User, session_id: str) -> dict[str, str]:
+        session = await self._get_active_session(session_id, user.id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        await self._revoke_session(session)
+        await self.db.commit()
+        return {"detail": "Session revoked"}
+
+    async def revoke_other_sessions(self, user: User, current_token: str) -> dict[str, str]:
+        current_session_id = decode_app_token(current_token).get("sid")
+        now = datetime.now(UTC)
+        await self.db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.user_id == user.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.session_id != current_session_id,
+            )
+            .values(revoked_at=now)
+        )
+        await self.db.commit()
+        return {"detail": "Other sessions revoked"}
+
     async def _create_auth_code(self, email: str, purpose: str) -> str:
         await self.cleanup_expired_auth_codes()
         normalized_email = str(email).lower()
@@ -398,6 +478,7 @@ class AuthService:
                 email=normalized_email,
                 purpose=purpose,
                 code_hash=get_password_hash(code),
+                attempts=0,
                 expires_at=now + timedelta(minutes=AUTH_CODE_EXPIRE_MINUTES),
             )
         )
@@ -418,7 +499,15 @@ class AuthService:
             .order_by(EmailAuthCode.created_at.desc(), EmailAuthCode.id.desc())
         )
         auth_code = result.scalars().first()
-        if not auth_code or not verify_password(code, auth_code.code_hash):
+        if not auth_code:
+            return False
+
+        if not verify_password(code, auth_code.code_hash):
+            auth_code.attempts += 1
+            if auth_code.attempts >= AUTH_CODE_MAX_ATTEMPTS:
+                auth_code.used_at = datetime.now(UTC)
+            self.db.add(auth_code)
+            await self.db.commit()
             return False
 
         auth_code.used_at = datetime.now(UTC)
@@ -433,11 +522,34 @@ class AuthService:
         except IntegrityError:
             await self.db.rollback()
 
-    @staticmethod
-    def _token_pair(email: str) -> dict[str, str]:
+    async def _token_pair(self, user: User, session: AuthSession | None = None) -> dict[str, str]:
+        session_id = session.session_id if session else uuid.uuid4().hex
+        data = {"sub": user.email, "sid": session_id}
+        access_token = create_access_token(data=data)
+        refresh_token = create_refresh_token(data=data)
+        refresh_payload = decode_app_token(refresh_token)
+        refresh_jti = refresh_payload["jti"]
+        expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=UTC)
+
+        if session is None:
+            session = AuthSession(
+                session_id=session_id,
+                user_id=user.id,
+                refresh_jti=refresh_jti,
+                expires_at=expires_at,
+                last_used_at=datetime.now(UTC),
+            )
+        else:
+            session.refresh_jti = refresh_jti
+            session.expires_at = expires_at
+            session.last_used_at = datetime.now(UTC)
+
+        self.db.add(session)
+        await self.db.commit()
+
         return {
-            "access_token": create_access_token(data={"sub": email}),
-            "refresh_token": create_refresh_token(data={"sub": email}),
+            "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
         }
 
@@ -452,6 +564,43 @@ class AuthService:
             return None
 
         return payload["jti"], datetime.fromtimestamp(payload["exp"], tz=UTC)
+
+    async def _get_active_session(self, session_id: str, user_id: int) -> AuthSession | None:
+        result = await self.db.execute(
+            select(AuthSession).where(
+                AuthSession.session_id == session_id,
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(UTC),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _revoke_session(self, session: AuthSession) -> None:
+        session.revoked_at = datetime.now(UTC)
+        self.db.add(session)
+
+    async def _revoke_session_by_id(self, session_id: str) -> None:
+        await self.db.execute(
+            update(AuthSession)
+            .where(AuthSession.session_id == session_id, AuthSession.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(UTC))
+        )
+        await self.db.commit()
+
+    async def _revoke_session_by_token(self, token: str) -> None:
+        try:
+            payload = decode_app_token(token)
+        except jwt.PyJWTError:
+            return
+
+        session_id = payload.get("sid")
+        if session_id:
+            await self.db.execute(
+                update(AuthSession)
+                .where(AuthSession.session_id == session_id, AuthSession.revoked_at.is_(None))
+                .values(revoked_at=datetime.now(UTC))
+            )
 
     @staticmethod
     def _ensure_token_is_new_enough(payload: dict, user: User) -> None:
@@ -483,3 +632,17 @@ def create_email_confirmation_link(email: str) -> str:
     app_base_url = os.getenv("APP_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
     token = create_confirmation_token(email)
     return f"{app_base_url}/auth/verify-email/{token}"
+
+
+async def run_auth_cleanup_scheduler() -> None:
+    while True:
+        try:
+            async with SessionLocal() as db:
+                service = AuthService(db)
+                await service.cleanup_expired_blocked_tokens()
+                await service.cleanup_expired_auth_codes()
+                await service.cleanup_expired_auth_sessions()
+        except Exception:
+            pass
+
+        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)

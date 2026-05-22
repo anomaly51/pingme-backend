@@ -98,11 +98,19 @@ async def register_user(
     client: AsyncClient,
     email: str | None = None,
     password: str = TEST_PASSWORD,
+    confirm_email: bool = True,
 ) -> dict:
     email = email or f"u_{uuid.uuid4().hex[:8]}@test.com"
     response = await client.post("/auth/register", json={"email": email, "password": password})
     assert response.status_code == 201, response.text
     data = response.json()
+    if confirm_email:
+        async with _session_maker() as session:
+            await session.execute(
+                text("UPDATE users SET is_email_confirmed = true WHERE email = :email"),
+                {"email": email},
+            )
+            await session.commit()
     return {"email": email, "password": password, "id": data["id"]}
 
 
@@ -135,6 +143,7 @@ async def make_user_with_role(role: str) -> dict:
             email=email,
             hashed_password=get_password_hash(TEST_PASSWORD),
             roles=[role],
+            is_email_confirmed=True,
         )
         session.add(user)
         await session.commit()

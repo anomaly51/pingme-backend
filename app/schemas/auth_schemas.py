@@ -16,7 +16,7 @@ class LogoutRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class GoogleLoginRequest(BaseModel):
@@ -38,3 +38,11 @@ class AssignAdminRequest(BaseModel):
 
 class AssignManagerRequest(BaseModel):
     email: EmailStr
+
+
+class AuthSessionResponse(BaseModel):
+    session_id: str
+    created_at: str
+    last_used_at: str
+    expires_at: str
+    current: bool = False

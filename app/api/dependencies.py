@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_app_token
-from app.models.user_model import BlockedToken, User
+from app.models.user_model import AuthSession, BlockedToken, User
 from app.services.auth_service import AuthService
 from db.database import get_db
 
@@ -52,6 +52,7 @@ async def _get_user_from_token(token: str, db: AsyncSession) -> User:  # noqa: C
 
         email: str | None = payload.get("sub")
         jti: str | None = payload.get("jti")
+        session_id: str | None = payload.get("sid")
         if email is None:
             raise credentials_exception
 
@@ -73,11 +74,32 @@ async def _get_user_from_token(token: str, db: AsyncSession) -> User:  # noqa: C
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if session_id is not None:
+        session_result = await db.execute(
+            select(AuthSession).where(
+                AuthSession.session_id == session_id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(UTC),
+            )
+        )
+        if session_result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="This session has been revoked.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     query = select(User).where(User.email == email)
     result = await db.execute(query)
     user = result.scalar_one_or_none()
     if not user:
         raise credentials_exception
+
+    if not user.is_email_confirmed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email is not confirmed",
+        )
 
     token_iat = payload.get("iat")
     if user.password_changed_at:

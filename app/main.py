@@ -5,6 +5,7 @@ import socketio
 from fastapi import FastAPI
 
 from app.api.v1.endpoints import answers, auth, forms, study_tracking_router
+from app.services.auth_service import run_auth_cleanup_scheduler
 from app.services.tracking_service import run_find_offer_monthly_scheduler
 
 from .sockets import sio
@@ -15,6 +16,7 @@ app = FastAPI(
     description="FastAPI with PostgreSQL database.",
     version="0.1.0",
 )
+auth_cleanup_scheduler_task: asyncio.Task | None = None
 find_offer_scheduler_task: asyncio.Task | None = None
 
 
@@ -29,6 +31,24 @@ async def root():
 @app.get("/health", tags=["System Checks"])
 async def health():
     return {"status": "ok", "version": os.getenv("APP_VERSION", "")}
+
+
+@app.on_event("startup")
+async def start_auth_cleanup_scheduler():
+    global auth_cleanup_scheduler_task
+    auth_cleanup_scheduler_task = asyncio.create_task(run_auth_cleanup_scheduler())
+
+
+@app.on_event("shutdown")
+async def stop_auth_cleanup_scheduler():
+    if auth_cleanup_scheduler_task is None:
+        return
+
+    auth_cleanup_scheduler_task.cancel()
+    try:
+        await auth_cleanup_scheduler_task
+    except asyncio.CancelledError:
+        pass
 
 
 @app.on_event("startup")

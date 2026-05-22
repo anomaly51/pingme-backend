@@ -1,12 +1,16 @@
-from fastapi import APIRouter, Depends, Request, status
+import os
+
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import RoleChecker, get_auth_service, get_current_user, oauth2_scheme
+from app.api.rate_limit import rate_limit
 from app.models.user_model import User
 from app.schemas.auth_schemas import (
     AssignAdminRequest,
     AssignManagerRequest,
+    AuthSessionResponse,
     EmailVerificationCodeRequest,
     EmailVerificationConfirmRequest,
     GoogleLoginRequest,
@@ -26,6 +30,23 @@ from db.database import get_db
 
 router = APIRouter(prefix="/auth", tags=["Authorization"])
 users_router = APIRouter(prefix="/users", tags=["Users"])
+REFRESH_COOKIE_NAME = "refresh_token"
+
+
+def set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        REFRESH_COOKIE_NAME,
+        refresh_token,
+        httponly=True,
+        secure=os.getenv("COOKIE_SECURE", "false").lower() in {"1", "true", "yes"},
+        samesite=os.getenv("COOKIE_SAMESITE", "lax"),
+        max_age=int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7")) * 24 * 60 * 60,
+        path="/auth",
+    )
+
+
+def clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(REFRESH_COOKIE_NAME, path="/auth")
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -45,6 +66,7 @@ async def confirm_email(token: str, auth_service: AuthService = Depends(get_auth
 async def request_email_verification_code(
     data: EmailVerificationCodeRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    _rate_limit: None = Depends(rate_limit("verify_email_request", limit=5, window_seconds=300)),
 ):
     return await auth_service.send_email_verification_code(str(data.email).lower())
 
@@ -53,45 +75,64 @@ async def request_email_verification_code(
 async def confirm_email_code(
     data: EmailVerificationConfirmRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    _rate_limit: None = Depends(rate_limit("verify_email_confirm", limit=10, window_seconds=300)),
 ):
     return await auth_service.confirm_email_code(str(data.email).lower(), data.code)
 
 
 @router.post("/login", response_model=Token)
 async def login_user(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     auth_service: AuthService = Depends(get_auth_service),
+    _rate_limit: None = Depends(rate_limit("login", limit=10, window_seconds=300)),
 ):
-    return await auth_service.login_user(form_data.username, form_data.password)
+    tokens = await auth_service.login_user(form_data.username, form_data.password)
+    set_refresh_cookie(response, tokens["refresh_token"])
+    return tokens
 
 
 @router.post("/google", response_model=Token)
 async def google_login(
     data: GoogleLoginRequest,
+    response: Response,
     auth_service: AuthService = Depends(get_auth_service),
+    _rate_limit: None = Depends(rate_limit("google_login", limit=20, window_seconds=300)),
 ):
     user = await auth_service.authenticate_google_user(data.id_token)
-    return auth_service._token_pair(user.email)
+    tokens = await auth_service._token_pair(user)
+    set_refresh_cookie(response, tokens["refresh_token"])
+    return tokens
 
 
 @router.post("/refresh", response_model=Token)
 async def refresh_access_token(
-    data: RefreshRequest,
+    request: Request,
+    response: Response,
+    data: RefreshRequest | None = None,
     auth_service: AuthService = Depends(get_auth_service),
+    _rate_limit: None = Depends(rate_limit("refresh", limit=30, window_seconds=300)),
 ):
-    return await auth_service.refresh_access_token(data.refresh_token)
+    refresh_token = data.refresh_token if data else None
+    refresh_token = refresh_token or request.cookies.get(REFRESH_COOKIE_NAME)
+    tokens = await auth_service.refresh_access_token(refresh_token or "")
+    set_refresh_cookie(response, tokens["refresh_token"])
+    return tokens
 
 
 @router.post("/logout")
 async def logout_user(
     data: LogoutRequest,
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
     auth_header = request.headers.get("Authorization", "")
     access_token = auth_header.removeprefix("Bearer ").strip()
-    await auth_service.logout(access_token=access_token, refresh_token=data.refresh_token)
+    refresh_token = data.refresh_token or request.cookies.get(REFRESH_COOKIE_NAME)
+    await auth_service.logout(access_token=access_token, refresh_token=refresh_token)
+    clear_refresh_cookie(response)
     return {"detail": "Выход выполнен успешно", "user": current_user.email}
 
 
@@ -109,6 +150,7 @@ async def change_password(
 async def request_password_reset(
     data: PasswordResetRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    _rate_limit: None = Depends(rate_limit("password_reset_request", limit=5, window_seconds=300)),
 ):
     return await auth_service.request_password_reset(str(data.email).lower())
 
@@ -117,10 +159,42 @@ async def request_password_reset(
 async def confirm_password_reset(
     data: PasswordResetConfirmRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    _rate_limit: None = Depends(rate_limit("password_reset_confirm", limit=10, window_seconds=300)),
 ):
     return await auth_service.confirm_password_reset(
         str(data.email).lower(), data.code, data.new_password
     )
+
+
+@router.get("/sessions", response_model=list[AuthSessionResponse])
+async def get_sessions(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    auth_header = request.headers.get("Authorization", "")
+    access_token = auth_header.removeprefix("Bearer ").strip()
+    return await auth_service.list_sessions(current_user, access_token)
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    return await auth_service.revoke_session(current_user, session_id)
+
+
+@router.delete("/sessions")
+async def revoke_other_sessions(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    auth_header = request.headers.get("Authorization", "")
+    access_token = auth_header.removeprefix("Bearer ").strip()
+    return await auth_service.revoke_other_sessions(current_user, access_token)
 
 
 @router.post("/assign-admin", response_model=UserResponse)
