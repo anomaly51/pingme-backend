@@ -4,7 +4,7 @@ import os
 import socketio
 from fastapi import FastAPI
 
-from app.api.v1.endpoints import answers, auth, forms, study_tracking_router
+from app.api.v1.endpoints import answers, auth, forms, reminders, study_tracking_router
 from app.services.auth_service import run_auth_cleanup_scheduler
 from app.services.tracking_service import run_find_offer_monthly_scheduler
 
@@ -76,5 +76,6 @@ app.include_router(auth.router)
 app.include_router(auth.users_router)
 app.include_router(forms.router)
 app.include_router(answers.router)
+app.include_router(reminders.router)
 app.include_router(study_tracking_router.router)
 app = socketio.ASGIApp(sio, other_asgi_app=app)

@@ -1,7 +1,20 @@
+import os
+
 import socketio
 
 
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+socket_manager = None
+if os.getenv("TESTING") != "True":
+    socket_manager = socketio.AsyncAioPikaManager(
+        os.getenv("RABBITMQ_SOCKETIO_URL")
+        or os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+    )
+
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins="*",
+    client_manager=socket_manager,
+)
 
 
 @sio.event

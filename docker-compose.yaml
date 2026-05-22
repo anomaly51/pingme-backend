@@ -29,6 +29,18 @@ services:
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   api:
     build: .
     ports:
@@ -40,10 +52,29 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     env_file:
       - .env
     environment:
       - TESTING=False
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+
+  reminder_worker:
+    build: .
+    volumes:
+      - .:/code
+    command: python -m app.services.reminder_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - TESTING=False
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
   test_runner:
     build:
