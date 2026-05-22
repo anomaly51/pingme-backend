@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.dependencies import get_current_user, oauth2_scheme
-from app.schemas.user_schemas import GoogleLogin, UserCreate
+from app.schemas.user_schemas import UserCreate
 from app.services.auth_service import AuthService
 
 
@@ -27,14 +27,6 @@ async def login_user(
     form_data: OAuth2PasswordRequestForm = Depends(), auth_service: AuthService = Depends()
 ):
     return await auth_service.login_user(form_data.username, form_data.password)
-
-
-@router.post("/auth/google", tags=["Authorization"])
-async def login_google(
-    google_data: GoogleLogin,
-    auth_service: AuthService = Depends(),
-):
-    return await auth_service.login_google(google_data.id_token)
 
 
 @router.post("/auth/logout", tags=["Authorization"])
