@@ -6,7 +6,8 @@ from datetime import UTC, datetime, timedelta
 from aio_pika import IncomingMessage
 from sqlalchemy import select
 
-from app.models.user_model import Reminder
+from app.models.user_model import Reminder, User
+from app.services.email_service import send_push_notification, send_reminder_notification
 from app.services.reminder_queue import (
     READY_QUEUE,
     _connect,
@@ -26,8 +27,15 @@ async def handle_reminder_message(message: IncomingMessage) -> None:
         reminder_id = int(payload["reminder_id"])
 
         async with SessionLocal() as db:
-            result = await db.execute(select(Reminder).where(Reminder.id == reminder_id))
-            reminder = result.scalar_one_or_none()
+            result = await db.execute(
+                select(Reminder, User)
+                .join(User, User.id == Reminder.user_id)
+                .where(Reminder.id == reminder_id)
+            )
+            row = result.one_or_none()
+            if row is None:
+                return
+            reminder, user = row
             if reminder is None or reminder.status not in {"pending", "skipped"}:
                 return
 
@@ -46,18 +54,37 @@ async def handle_reminder_message(message: IncomingMessage) -> None:
             await db.commit()
             await db.refresh(reminder)
 
-        await sio.emit(
-            "reminder.due",
-            {
-                "id": reminder.id,
-                "form_id": reminder.form_id,
-                "title": reminder.title,
-                "payload": reminder.payload,
-                "retry_delay_seconds": reminder.retry_delay_seconds,
-                "skip_count": reminder.skip_count,
-            },
-            room=f"user_{reminder.user_id}",
-        )
+        reminder_payload = {
+            "id": reminder.id,
+            "form_id": reminder.form_id,
+            "title": reminder.title,
+            "payload": reminder.payload,
+            "retry_delay_seconds": reminder.retry_delay_seconds,
+            "delivery_retry_delay_seconds": reminder.delivery_retry_delay_seconds,
+            "skip_count": reminder.skip_count,
+            "delivery_count": reminder.delivery_count,
+            "next_run_at": reminder.next_run_at.isoformat(),
+        }
+        preferences = user.notification_preferences or {}
+        if preferences.get("realtime", True):
+            await sio.emit("reminder.due", reminder_payload, room=f"user_{reminder.user_id}")
+
+        if preferences.get("email", False):
+            try:
+                await asyncio.to_thread(send_reminder_notification, user.email, reminder.title)
+            except Exception:
+                logger.exception("Could not send reminder email %s", reminder.id)
+
+        if preferences.get("push", False) and user.push_token:
+            try:
+                await asyncio.to_thread(
+                    send_push_notification,
+                    user.push_token,
+                    reminder.title,
+                    reminder_payload,
+                )
+            except Exception:
+                logger.exception("Could not send reminder push %s", reminder.id)
 
         await publish_reminder(reminder.id, reminder.delivery_retry_delay_seconds)
 

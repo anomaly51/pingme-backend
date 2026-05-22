@@ -2,9 +2,11 @@ import asyncio
 import logging
 import re
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user_model import Form, Reminder, User
@@ -47,23 +49,53 @@ class ReminderService:
         return reminder
 
     async def get_current_reminders(self, user: User) -> list[Reminder]:
-        result = await self.db.execute(
-            select(Reminder)
-            .where(
-                Reminder.user_id == user.id,
-                Reminder.status.in_(ACTIVE_REMINDER_STATUSES),
-                Reminder.next_run_at <= datetime.now(UTC),
-            )
-            .order_by(Reminder.next_run_at.asc(), Reminder.id.asc())
+        return await self.list_reminders(
+            user,
+            statuses=ACTIVE_REMINDER_STATUSES,
+            due_only=True,
+            limit=100,
+            offset=0,
         )
+
+    async def list_reminders(
+        self,
+        user: User,
+        statuses: set[str] | None = None,
+        form_id: int | None = None,
+        due_only: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Reminder]:
+        query = select(Reminder).where(Reminder.user_id == user.id)
+        if statuses:
+            query = query.where(Reminder.status.in_(statuses))
+        if form_id is not None:
+            await self._ensure_user_form(form_id, user)
+            query = query.where(Reminder.form_id == form_id)
+        if due_only:
+            query = query.where(Reminder.next_run_at <= datetime.now(UTC))
+        query = (
+            query.order_by(Reminder.next_run_at.desc(), Reminder.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.db.execute(query)
         return list(result.scalars().all())
 
     async def create_due_form_reminders(self, now: datetime | None = None) -> list[Reminder]:
         now = now or datetime.now(UTC)
-        result = await self.db.execute(select(Form).where(Form.reminder_enabled.is_(True)))
+        result = await self.db.execute(
+            select(Form, User)
+            .join(User, User.id == Form.user_id)
+            .where(
+                Form.reminder_enabled.is_(True),
+                Form.is_active.is_(True),
+                Form.archived_at.is_(None),
+            )
+        )
         created: list[Reminder] = []
-        for form in result.scalars().all():
-            if not should_schedule_form_reminder(form, now):
+        for form, user in result.all():
+            if not should_schedule_form_reminder(form, now, user.timezone):
                 continue
 
             if await self._has_active_form_reminder(form.user_id, form.id):
@@ -87,7 +119,11 @@ class ReminderService:
             form.last_reminder_scheduled_at = now
             self.db.add(form)
             self.db.add(reminder)
-            await self.db.commit()
+            try:
+                await self.db.commit()
+            except IntegrityError:
+                await self.db.rollback()
+                continue
             await self.db.refresh(reminder)
             await self.enqueue_reminder(reminder)
             created.append(reminder)
@@ -176,7 +212,22 @@ class ReminderService:
 
     async def enqueue_reminder(self, reminder: Reminder) -> None:
         delay_seconds = max(int((reminder.next_run_at - datetime.now(UTC)).total_seconds()), 0)
-        await publish_reminder(reminder.id, delay_seconds)
+        try:
+            publish_result = await publish_reminder(reminder.id, delay_seconds)
+        except Exception as exc:
+            reminder.enqueue_status = "failed"
+            reminder.last_enqueue_error = str(exc)[:1000]
+        else:
+            if publish_result is False:
+                reminder.enqueue_status = "failed"
+                reminder.last_enqueue_error = "RabbitMQ publish failed"
+            else:
+                reminder.enqueue_status = "queued"
+                reminder.last_enqueue_error = None
+                reminder.enqueued_at = datetime.now(UTC)
+        self.db.add(reminder)
+        await self.db.commit()
+        await self.db.refresh(reminder)
 
     async def _get_user_reminder(self, reminder_id: int, user: User) -> Reminder:
         result = await self.db.execute(
@@ -231,7 +282,13 @@ def next_schedule_interval_seconds(schedule_crons: list[str]) -> int | None:
     return min(intervals)
 
 
-def should_schedule_form_reminder(form: Form, now: datetime) -> bool:
+def should_schedule_form_reminder(form: Form, now: datetime, timezone_name: str = "UTC") -> bool:
+    if any(
+        is_time_schedule_due(schedule, form.last_reminder_scheduled_at, now, timezone_name)
+        for schedule in form.schedule_crons or []
+    ):
+        return True
+
     interval = next_schedule_interval_seconds(form.schedule_crons or [])
     if interval is None:
         return False
@@ -242,6 +299,103 @@ def should_schedule_form_reminder(form: Form, now: datetime) -> bool:
     if last_scheduled_at.tzinfo is None:
         last_scheduled_at = last_scheduled_at.replace(tzinfo=UTC)
     return last_scheduled_at + timedelta(seconds=interval) <= now
+
+
+def is_time_schedule_due(
+    schedule: str,
+    last_scheduled_at: datetime | None,
+    now: datetime,
+    timezone_name: str,
+) -> bool:
+    parsed = parse_time_schedule(schedule)
+    if parsed is None:
+        return False
+
+    weekdays, hour, minute = parsed
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("UTC")
+
+    now_local = ensure_aware_utc(now).astimezone(timezone)
+    if last_scheduled_at is None:
+        search_start = now_local.date()
+    else:
+        search_start = ensure_aware_utc(last_scheduled_at).astimezone(timezone).date()
+
+    days_to_check = (now_local.date() - search_start).days + 1
+    days_to_check = max(1, min(days_to_check, 370))
+    last_utc = ensure_aware_utc(last_scheduled_at) if last_scheduled_at else None
+    for day_offset in range(days_to_check):
+        local_day = search_start + timedelta(days=day_offset)
+        if weekdays is not None and local_day.weekday() not in weekdays:
+            continue
+        due_local = datetime.combine(local_day, datetime.min.time(), tzinfo=timezone).replace(
+            hour=hour,
+            minute=minute,
+        )
+        due_utc = due_local.astimezone(UTC)
+        if due_utc <= ensure_aware_utc(now) and (last_utc is None or due_utc > last_utc):
+            return True
+    return False
+
+
+def parse_time_schedule(schedule: str) -> tuple[set[int] | None, int, int] | None:
+    value = schedule.strip().lower()
+    value = re.sub(r"^@(daily|time)\s+", "", value)
+    value = re.sub(r"^daily\s+", "", value)
+
+    weekday_aliases = {
+        "mon": 0,
+        "monday": 0,
+        "tue": 1,
+        "tuesday": 1,
+        "wed": 2,
+        "wednesday": 2,
+        "thu": 3,
+        "thursday": 3,
+        "fri": 4,
+        "friday": 4,
+        "sat": 5,
+        "saturday": 5,
+        "sun": 6,
+        "sunday": 6,
+    }
+    match = re.fullmatch(r"(?:(weekdays|weekends|[a-z,\s]+)\s+)?(\d{1,2}):(\d{2})", value)
+    if match is None:
+        return None
+
+    day_part, hour_raw, minute_raw = match.groups()
+    hour = int(hour_raw)
+    minute = int(minute_raw)
+    if hour > 23 or minute > 59:
+        return None
+
+    weekdays: set[int] | None = None
+    if day_part:
+        day_part = day_part.strip()
+        if day_part == "weekdays":
+            weekdays = {0, 1, 2, 3, 4}
+        elif day_part == "weekends":
+            weekdays = {5, 6}
+        else:
+            weekdays = set()
+            for token in re.split(r"[\s,]+", day_part):
+                if not token:
+                    continue
+                if token not in weekday_aliases:
+                    return None
+                weekdays.add(weekday_aliases[token])
+
+    return weekdays, hour, minute
+
+
+def ensure_aware_utc(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime.now(UTC)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 async def run_reminder_scheduler() -> None:

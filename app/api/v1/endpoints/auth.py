@@ -53,6 +53,7 @@ def clear_refresh_cookie(response: Response) -> None:
 async def register_user(
     user_data: UserCreate,
     auth_service: AuthService = Depends(get_auth_service),
+    _rate_limit: None = Depends(rate_limit("register", limit=10, window_seconds=300)),
 ):
     return await auth_service.register_user(user_data)
 
@@ -232,6 +233,9 @@ async def update_current_user_profile(
     db: AsyncSession = Depends(get_db),
 ):
     for key, value in data.model_dump(exclude_unset=True).items():
+        if key == "notification_preferences" and value is not None:
+            current = current_user.notification_preferences or {}
+            value = {**current, **value}
         setattr(current_user, key, value)
 
     await db.commit()

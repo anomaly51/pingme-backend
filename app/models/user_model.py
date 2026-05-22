@@ -1,6 +1,17 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, func, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +29,15 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     birth_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
     gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    push_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
+    notification_preferences: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        default=lambda: {"realtime": True, "email": False, "push": False},
+        server_default='{"realtime": true, "email": false, "push": false}',
+    )
     is_email_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     roles = Column(ARRAY(String), default=lambda: ["customer"], server_default="{}")
     password_changed_at: Mapped[datetime | None] = mapped_column(
@@ -87,8 +107,11 @@ class Form(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     form_structure: Mapped[dict] = mapped_column(JSON, nullable=False)
     schedule_crons: Mapped[list] = mapped_column(JSON, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     reminder_title: Mapped[str | None] = mapped_column(String, nullable=True)
     reminder_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -134,11 +157,27 @@ class Reminder(Base):
     last_delivered_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    enqueue_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="pending"
+    )
+    last_enqueue_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    enqueued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_active_form_reminder",
+            "user_id",
+            "form_id",
+            unique=True,
+            postgresql_where=text("form_id IS NOT NULL AND status IN ('pending', 'skipped')"),
+            sqlite_where=text("form_id IS NOT NULL AND status IN ('pending', 'skipped')"),
+        ),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

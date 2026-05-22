@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 ReminderStatus = Literal["pending", "skipped", "completed", "cancelled"]
+ReminderEnqueueStatus = Literal["pending", "queued", "failed"]
 
 
 class ReminderCreate(BaseModel):
@@ -31,6 +32,9 @@ class ReminderResponse(BaseModel):
     skip_count: int
     delivery_count: int
     last_delivered_at: datetime | None = None
+    enqueue_status: ReminderEnqueueStatus = "pending"
+    last_enqueue_error: str | None = None
+    enqueued_at: datetime | None = None
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

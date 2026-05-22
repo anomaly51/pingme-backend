@@ -6,7 +6,9 @@ from sqlalchemy import select
 from app.models.user_model import Reminder
 from app.services.reminder_service import (
     ReminderService,
+    is_time_schedule_due,
     parse_schedule_interval_seconds,
+    parse_time_schedule,
 )
 from tests.conftest import reg_and_login
 
@@ -149,6 +151,20 @@ def test_parse_schedule_interval_seconds():
     assert parse_schedule_interval_seconds("0 9 * * *") is None
 
 
+def test_parse_time_schedule():
+    assert parse_time_schedule("09:00") == (None, 9, 0)
+    assert parse_time_schedule("daily 09:30") == (None, 9, 30)
+    assert parse_time_schedule("weekdays 09:00") == ({0, 1, 2, 3, 4}, 9, 0)
+    assert parse_time_schedule("mon,wed,fri 18:30") == ({0, 2, 4}, 18, 30)
+    assert parse_time_schedule("25:00") is None
+
+
+def test_time_schedule_uses_user_timezone():
+    now = datetime(2026, 5, 22, 6, 30, tzinfo=UTC)
+    assert is_time_schedule_due("09:00", None, now, "Europe/Athens") is True
+    assert is_time_schedule_due("10:00", None, now, "Europe/Athens") is False
+
+
 @pytest.mark.asyncio
 async def test_form_scheduler_creates_reminder_and_prevents_duplicates(
     async_client, db_session, disable_rabbitmq_publish
@@ -229,3 +245,149 @@ async def test_due_in_seconds_delays_current_reminder(async_client, db_session):
 
     due = await async_client.get("/reminders/current", headers=session["headers"])
     assert [reminder["id"] for reminder in due.json()] == [reminder_id]
+
+
+@pytest.mark.asyncio
+async def test_list_reminders_filters_by_status_and_form(async_client, disable_rabbitmq_publish):
+    session = await reg_and_login(async_client)
+    form = await async_client.post(
+        "/forms",
+        json={
+            "title": "Guitar practice",
+            "description": "Daily practice log",
+            "form_structure": {"fields": [{"name": "minutes", "type": "number"}]},
+            "schedule_crons": [],
+        },
+        headers=session["headers"],
+    )
+    form_id = form.json()["form_id"]
+    reminder = await async_client.post(
+        "/reminders",
+        json={"title": "Track guitar", "form_id": form_id},
+        headers=session["headers"],
+    )
+
+    response = await async_client.get(
+        f"/reminders?status=pending&form_id={form_id}",
+        headers=session["headers"],
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [reminder.json()["id"]]
+    assert response.json()[0]["enqueue_status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_update_reminder_settings_and_archive_restore_form(async_client):
+    session = await reg_and_login(async_client)
+    form = await async_client.post(
+        "/forms",
+        json={
+            "title": "Guitar practice",
+            "form_structure": {"fields": [{"name": "minutes", "type": "number"}]},
+            "schedule_crons": [],
+        },
+        headers=session["headers"],
+    )
+    form_id = form.json()["form_id"]
+
+    updated = await async_client.patch(
+        f"/forms/{form_id}/reminder-settings",
+        json={
+            "schedule_crons": ["weekdays 09:00"],
+            "reminder_enabled": True,
+            "delivery_retry_delay_seconds": 900,
+        },
+        headers=session["headers"],
+    )
+    assert updated.status_code == 200
+    assert updated.json()["form"]["schedule_crons"] == ["weekdays 09:00"]
+    assert updated.json()["form"]["reminder_enabled"] is True
+
+    archived = await async_client.post(f"/forms/{form_id}/archive", headers=session["headers"])
+    assert archived.json()["form"]["is_active"] is False
+    assert archived.json()["form"]["archived_at"] is not None
+
+    hidden = await async_client.get("/forms", headers=session["headers"])
+    assert hidden.json() == []
+
+    restored = await async_client.post(f"/forms/{form_id}/restore", headers=session["headers"])
+    assert restored.json()["form"]["is_active"] is True
+    assert restored.json()["form"]["archived_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_answer_stats_returns_numeric_averages(async_client):
+    session = await reg_and_login(async_client)
+    form = await async_client.post(
+        "/forms",
+        json={
+            "title": "Study",
+            "form_structure": {
+                "fields": [
+                    {"name": "hours", "type": "number"},
+                    {"name": "done", "type": "boolean"},
+                ]
+            },
+            "schedule_crons": [],
+        },
+        headers=session["headers"],
+    )
+    form_id = form.json()["form_id"]
+    for hours in [1, 2, 3]:
+        await async_client.post(
+            f"/forms/{form_id}/answers",
+            json={"answers_data": {"hours": hours, "done": True}},
+            headers=session["headers"],
+        )
+
+    stats = await async_client.get(f"/forms/{form_id}/answers/stats", headers=session["headers"])
+
+    assert stats.status_code == 200
+    assert stats.json()["total_answers"] == 3
+    assert stats.json()["numeric_averages"] == {"hours": 2.0}
+
+
+@pytest.mark.asyncio
+async def test_answer_validation_rejects_invalid_payload(async_client):
+    session = await reg_and_login(async_client)
+    form = await async_client.post(
+        "/forms",
+        json={
+            "title": "Study",
+            "form_structure": {
+                "fields": [
+                    {"name": "hours", "type": "number", "required": True, "min": 0, "max": 12}
+                ]
+            },
+            "schedule_crons": [],
+        },
+        headers=session["headers"],
+    )
+    form_id = form.json()["form_id"]
+
+    response = await async_client.post(
+        f"/forms/{form_id}/answers",
+        json={"answers_data": {"hours": 20}},
+        headers=session["headers"],
+    )
+
+    assert response.status_code == 422
+    assert "above maximum" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_form_structure_validation_rejects_bad_field(async_client):
+    session = await reg_and_login(async_client)
+
+    response = await async_client.post(
+        "/forms",
+        json={
+            "title": "Bad form",
+            "form_structure": {"fields": [{"name": "x", "type": "unknown"}]},
+            "schedule_crons": [],
+        },
+        headers=session["headers"],
+    )
+
+    assert response.status_code == 422

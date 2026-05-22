@@ -943,3 +943,27 @@ async def test_password_changed_at_updated_in_db(async_client):
         user = (await db.execute(select(User).where(User.email == session["email"]))).scalar_one()
         assert user.password_changed_at is not None
         assert user.password_changed_at > datetime.now(UTC) - timedelta(seconds=10)
+
+
+@pytest.mark.asyncio
+async def test_update_profile_timezone_and_notifications(async_client):
+    session = await reg_and_login(async_client)
+
+    response = await async_client.patch(
+        "/auth/me",
+        json={
+            "timezone": "Europe/Athens",
+            "avatar_url": "https://example.com/avatar.png",
+            "push_token": "push-token-1",
+            "notification_preferences": {"email": True},
+        },
+        headers=session["headers"],
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["timezone"] == "Europe/Athens"
+    assert data["avatar_url"] == "https://example.com/avatar.png"
+    assert data["push_token"] == "push-token-1"
+    assert data["notification_preferences"]["email"] is True
+    assert data["notification_preferences"]["realtime"] is True

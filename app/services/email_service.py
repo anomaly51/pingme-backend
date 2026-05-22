@@ -1,7 +1,9 @@
+import json
 import logging
 import os
 import smtplib
 from email.message import EmailMessage
+from urllib import request
 
 
 logger = logging.getLogger(__name__)
@@ -53,3 +55,34 @@ def send_password_reset_code(email: str, code: str) -> None:
         "PingMe password reset code",
         f"Your PingMe password reset code is: {code}\n\nIt expires in 15 minutes.",
     )
+
+
+def send_reminder_notification(email: str, title: str) -> None:
+    send_email(
+        email,
+        f"PingMe reminder: {title}",
+        f"Reminder due: {title}\n\nOpen PingMe to complete, skip, or cancel it.",
+    )
+
+
+def send_push_notification(push_token: str, title: str, payload: dict) -> None:
+    webhook_url = os.getenv("PUSH_WEBHOOK_URL")
+    if not webhook_url:
+        logger.info("Push delivery is not configured. Token=%s title=%s", push_token, title)
+        return
+
+    body = json.dumps(
+        {
+            "token": push_token,
+            "title": title,
+            "payload": payload,
+        }
+    ).encode("utf-8")
+    push_request = request.Request(
+        webhook_url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with request.urlopen(push_request, timeout=10) as response:
+        response.read()

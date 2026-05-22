@@ -38,7 +38,7 @@ async def setup_reminder_queues(channel: aio_pika.abc.AbstractChannel) -> None:
     )
 
 
-async def publish_reminder(reminder_id: int, delay_seconds: int = 0) -> None:
+async def publish_reminder(reminder_id: int, delay_seconds: int = 0) -> bool:
     try:
         connection = await _connect()
         async with connection:
@@ -56,5 +56,7 @@ async def publish_reminder(reminder_id: int, delay_seconds: int = 0) -> None:
             else:
                 exchange = await channel.get_exchange(READY_EXCHANGE)
                 await exchange.publish(message, routing_key=READY_ROUTING_KEY)
+        return True
     except Exception:
         logger.exception("Could not publish reminder %s", reminder_id)
+        return False
