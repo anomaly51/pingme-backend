@@ -26,8 +26,11 @@ class ReminderResponse(BaseModel):
     payload: dict[str, Any]
     status: ReminderStatus
     retry_delay_seconds: int
+    delivery_retry_delay_seconds: int
     next_run_at: datetime
     skip_count: int
+    delivery_count: int
+    last_delivered_at: datetime | None = None
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from app.api.v1.endpoints import answers, auth, forms, reminders, study_tracking_router
 from app.services.auth_service import run_auth_cleanup_scheduler
+from app.services.reminder_service import run_reminder_scheduler
 from app.services.tracking_service import run_find_offer_monthly_scheduler
 
 from .sockets import sio
@@ -18,6 +19,7 @@ app = FastAPI(
 )
 auth_cleanup_scheduler_task: asyncio.Task | None = None
 find_offer_scheduler_task: asyncio.Task | None = None
+reminder_scheduler_task: asyncio.Task | None = None
 
 
 @app.get("/", tags=["System Checks"])
@@ -47,6 +49,27 @@ async def stop_auth_cleanup_scheduler():
     auth_cleanup_scheduler_task.cancel()
     try:
         await auth_cleanup_scheduler_task
+    except asyncio.CancelledError:
+        pass
+
+
+@app.on_event("startup")
+async def start_reminder_scheduler():
+    global reminder_scheduler_task
+    if os.getenv("REMINDER_SCHEDULER_ENABLED", "true").lower() not in {"1", "true", "yes"}:
+        return
+
+    reminder_scheduler_task = asyncio.create_task(run_reminder_scheduler())
+
+
+@app.on_event("shutdown")
+async def stop_reminder_scheduler():
+    if reminder_scheduler_task is None:
+        return
+
+    reminder_scheduler_task.cancel()
+    try:
+        await reminder_scheduler_task
     except asyncio.CancelledError:
         pass
 

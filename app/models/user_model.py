@@ -89,6 +89,18 @@ class Form(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     form_structure: Mapped[dict] = mapped_column(JSON, nullable=False)
     schedule_crons: Mapped[list] = mapped_column(JSON, nullable=False)
+    reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    reminder_title: Mapped[str | None] = mapped_column(String, nullable=True)
+    reminder_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    skip_retry_delay_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3600, server_default="3600"
+    )
+    delivery_retry_delay_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3600, server_default="3600"
+    )
+    last_reminder_scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Answer(Base):
@@ -113,8 +125,15 @@ class Reminder(Base):
     payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(32), index=True, nullable=False, default="pending")
     retry_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=3600)
+    delivery_retry_delay_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3600, server_default="3600"
+    )
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     skip_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    delivery_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

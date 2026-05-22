@@ -183,9 +183,10 @@ class AuthService:
     async def send_email_verification_code(self, email: str) -> dict[str, str]:
         user = await self._get_user_by_email(email)
         if user and not user.is_email_confirmed:
-            code = await self._create_auth_code(user.email, EMAIL_VERIFICATION_PURPOSE)
+            target_email = user.email
+            code = await self._create_auth_code(target_email, EMAIL_VERIFICATION_PURPOSE)
             try:
-                await asyncio.to_thread(send_email_verification_code, user.email, code)
+                await asyncio.to_thread(send_email_verification_code, target_email, code)
             except Exception as exc:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
@@ -210,9 +211,10 @@ class AuthService:
     async def request_password_reset(self, email: str) -> dict[str, str]:
         user = await self._get_user_by_email(email)
         if user:
-            code = await self._create_auth_code(user.email, PASSWORD_RESET_PURPOSE)
+            target_email = user.email
+            code = await self._create_auth_code(target_email, PASSWORD_RESET_PURPOSE)
             try:
-                await asyncio.to_thread(send_password_reset_code, user.email, code)
+                await asyncio.to_thread(send_password_reset_code, target_email, code)
             except Exception as exc:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,

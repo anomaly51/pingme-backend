@@ -16,9 +16,9 @@ async def create_answer(
     user: User = Depends(get_current_user_obj),
     answer_service: AnswerService = Depends(),
 ):
-    answer_id = await answer_service.create_answer(form_id, answer_data, user)
+    result = await answer_service.create_answer(form_id, answer_data, user)
 
-    return {"answer_id": answer_id, "message": "Answers saved"}
+    return {"message": "Answers saved", **result}
 
 
 @router.get("")

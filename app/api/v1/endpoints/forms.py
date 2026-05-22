@@ -30,6 +30,14 @@ async def get_all_forms(
             "title": f.title,
             "form_structure": f.form_structure,
             "schedule_crons": f.schedule_crons,
+            "reminder_enabled": f.reminder_enabled,
+            "reminder_title": f.reminder_title,
+            "reminder_payload": f.reminder_payload,
+            "skip_retry_delay_seconds": f.skip_retry_delay_seconds,
+            "delivery_retry_delay_seconds": f.delivery_retry_delay_seconds,
+            "last_reminder_scheduled_at": (
+                f.last_reminder_scheduled_at.isoformat() if f.last_reminder_scheduled_at else None
+            ),
         }
         for f in forms
     ]
@@ -47,6 +55,14 @@ async def get_form_by_id(
         "title": form.title,
         "form_structure": form.form_structure,
         "schedule_crons": form.schedule_crons,
+        "reminder_enabled": form.reminder_enabled,
+        "reminder_title": form.reminder_title,
+        "reminder_payload": form.reminder_payload,
+        "skip_retry_delay_seconds": form.skip_retry_delay_seconds,
+        "delivery_retry_delay_seconds": form.delivery_retry_delay_seconds,
+        "last_reminder_scheduled_at": (
+            form.last_reminder_scheduled_at.isoformat() if form.last_reminder_scheduled_at else None
+        ),
     }
 
 

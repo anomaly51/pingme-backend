@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from aio_pika import IncomingMessage
 from sqlalchemy import select
@@ -38,6 +38,9 @@ async def handle_reminder_message(message: IncomingMessage) -> None:
                 return
 
             reminder.status = "pending"
+            reminder.delivery_count += 1
+            reminder.last_delivered_at = now
+            reminder.next_run_at = now + timedelta(seconds=reminder.delivery_retry_delay_seconds)
             reminder.updated_at = now
             db.add(reminder)
             await db.commit()
@@ -55,6 +58,8 @@ async def handle_reminder_message(message: IncomingMessage) -> None:
             },
             room=f"user_{reminder.user_id}",
         )
+
+        await publish_reminder(reminder.id, reminder.delivery_retry_delay_seconds)
 
 
 async def run_reminder_worker() -> None:

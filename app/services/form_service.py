@@ -17,6 +17,11 @@ class FormService:
             title=form_data.title,
             form_structure=form_data.form_structure,
             schedule_crons=form_data.schedule_crons,
+            reminder_enabled=form_data.reminder_enabled,
+            reminder_title=form_data.reminder_title,
+            reminder_payload=form_data.reminder_payload,
+            skip_retry_delay_seconds=form_data.skip_retry_delay_seconds,
+            delivery_retry_delay_seconds=form_data.delivery_retry_delay_seconds,
         )
         self.db.add(new_form)
         await self.db.commit()
@@ -43,6 +48,11 @@ class FormService:
         form.title = form_data.title
         form.form_structure = form_data.form_structure
         form.schedule_crons = form_data.schedule_crons
+        form.reminder_enabled = form_data.reminder_enabled
+        form.reminder_title = form_data.reminder_title
+        form.reminder_payload = form_data.reminder_payload
+        form.skip_retry_delay_seconds = form_data.skip_retry_delay_seconds
+        form.delivery_retry_delay_seconds = form_data.delivery_retry_delay_seconds
 
         await self.db.commit()
 
