@@ -1,9 +1,11 @@
+import asyncio
 import os
 
 import socketio
 from fastapi import FastAPI
 
 from app.api.v1.endpoints import answers, auth, forms, study_tracking_router
+from app.services.tracking_service import run_find_offer_monthly_scheduler
 
 from .sockets import sio
 
@@ -13,6 +15,7 @@ app = FastAPI(
     description="FastAPI with PostgreSQL database.",
     version="0.1.0",
 )
+find_offer_scheduler_task: asyncio.Task | None = None
 
 
 @app.get("/", tags=["System Checks"])
@@ -26,6 +29,27 @@ async def root():
 @app.get("/health", tags=["System Checks"])
 async def health():
     return {"status": "ok", "version": os.getenv("APP_VERSION", "")}
+
+
+@app.on_event("startup")
+async def start_find_offer_scheduler():
+    global find_offer_scheduler_task
+    if os.getenv("FIND_OFFER_AUTO_EXTEND", "").lower() not in {"1", "true", "yes"}:
+        return
+
+    find_offer_scheduler_task = asyncio.create_task(run_find_offer_monthly_scheduler())
+
+
+@app.on_event("shutdown")
+async def stop_find_offer_scheduler():
+    if find_offer_scheduler_task is None:
+        return
+
+    find_offer_scheduler_task.cancel()
+    try:
+        await find_offer_scheduler_task
+    except asyncio.CancelledError:
+        pass
 
 
 app.include_router(auth.router)
