@@ -1,3 +1,5 @@
+import os
+
 import socketio
 from fastapi import FastAPI
 
@@ -19,6 +21,11 @@ async def root():
     **Check server status.**
     """
     return {"message": "Server is running!"}
+
+
+@app.get("/health", tags=["System Checks"])
+async def health():
+    return {"status": "ok", "version": os.getenv("APP_VERSION", "")}
 
 
 app.include_router(auth.router)

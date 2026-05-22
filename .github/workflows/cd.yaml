@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    uses: anomaly51/github-actions-toolkit/.github/workflows/argocd-app-release.yml@v11
+    with:
+      app-name: PingMe Backend
+      runner: anomaly51-runner
+      timeout-minutes: 15
+      concurrency-group: pingme-backend
+      registry: harbor.api-api-api.com
+      image-project: pingme
+      image-name: backend
+      gitops-repository: anomaly51/workload-2-k3s-argocd
+      deployment-path: apps/pingme-backend/deployment.yaml
+      deployment-container-name: backend
+      app-url: https://pingme-backend.api-api-api.com
+      health-url: https://pingme-backend.api-api-api.com/health
+      sync-attempts: "45"
+      live-version-attempts: "120"
+      live-version-interval-seconds: "2"
+    secrets:
+      registry_username: ${{ secrets.HARBOR_PUSH_USERNAME }}
+      registry_password: ${{ secrets.HARBOR_PUSH_PASSWORD }}
+      manifest_repository_token: ${{ secrets.DEVOPS_REPO_TOKEN }}
+      deployment_server: ${{ secrets.ARGOCD_SERVER }}
+      deployment_auth_token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+      deployment_resolve_ip: ${{ secrets.ARGOCD_RESOLVE_IP }}
+      deployment_insecure: ${{ secrets.ARGOCD_INSECURE }}
+      telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      telegram_chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
