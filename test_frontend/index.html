@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PingMe - тестовый интерфейс</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>PingMe - тестовый интерфейс</h1>
+        <p>Проверь регистрацию, формы, напоминания и сценарий “спросить позже”.</p>
+      </div>
+      <div class="status">
+        <span id="apiStatus" class="pill muted">API не проверен</span>
+        <span id="socketStatus" class="pill muted">Realtime выключен</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel auth-panel">
+        <div class="panel-head">
+          <h2>Аккаунт</h2>
+          <button id="logoutBtn" class="ghost">Выйти</button>
+        </div>
+
+        <label>
+          Почта
+          <input id="emailInput" type="email" value="fesenko.kostya576@gmail.com" />
+        </label>
+        <label>
+          Пароль
+          <input id="passwordInput" type="password" value="Strongpassword123" />
+        </label>
+        <div class="row">
+          <button id="loginBtn">Войти</button>
+          <button id="registerBtn" class="secondary">Зарегистрироваться</button>
+        </div>
+
+        <div class="confirm-box">
+          <label>
+            Код из письма
+            <input id="codeInput" inputmode="numeric" placeholder="6 цифр" />
+          </label>
+          <div class="row">
+            <button id="requestCodeBtn" class="secondary">Отправить код</button>
+            <button id="confirmCodeBtn" class="secondary">Подтвердить</button>
+          </div>
+        </div>
+
+        <pre id="authOutput" class="output"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Формы активности</h2>
+          <button id="refreshFormsBtn" class="secondary">Обновить</button>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            Название активности
+            <input id="formTitleInput" value="Игра на гитаре" />
+          </label>
+          <label>
+            Когда спрашивать
+            <input id="scheduleInput" value="daily 20:00" />
+          </label>
+          <label>
+            Если нажал “позже”
+            <select id="skipDelayInput">
+              <option value="1800">через 30 минут</option>
+              <option value="3600" selected>через 1 час</option>
+              <option value="86400">через 1 день</option>
+            </select>
+          </label>
+          <label>
+            Максимум минут
+            <input id="maxMinutesInput" type="number" value="600" />
+          </label>
+        </div>
+
+        <button id="createFormBtn">Создать форму</button>
+        <div id="formsList" class="list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Напоминания</h2>
+          <button id="refreshRemindersBtn" class="secondary">Обновить</button>
+        </div>
+
+        <div class="row">
+          <button id="createReminderBtn">Спросить сейчас</button>
+          <select id="manualDelayInput">
+            <option value="0">сразу</option>
+            <option value="60">через 1 минуту</option>
+            <option value="1800">через 30 минут</option>
+          </select>
+        </div>
+
+        <div id="bannerHost" class="banner-host"></div>
+        <div id="remindersList" class="list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Заполнить активность</h2>
+          <button id="statsBtn" class="secondary">Статистика</button>
+        </div>
+
+        <label>
+          Форма
+          <select id="answerFormSelect"></select>
+        </label>
+        <div class="form-grid">
+          <label>
+            Сколько минут
+            <input id="minutesInput" type="number" value="45" />
+          </label>
+          <label>
+            Настроение
+            <select id="moodInput">
+              <option value="bad">плохо</option>
+              <option value="ok">нормально</option>
+              <option value="good" selected>хорошо</option>
+            </select>
+          </label>
+        </div>
+        <button id="submitAnswerBtn">Сохранить ответ</button>
+        <pre id="answerOutput" class="output"></pre>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-head">
+          <h2>Технический лог</h2>
+          <button id="clearLogBtn" class="ghost">Очистить</button>
+        </div>
+        <pre id="logOutput" class="log"></pre>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
