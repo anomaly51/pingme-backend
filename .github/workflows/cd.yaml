@@ -22,6 +22,7 @@ jobs:
       image-name: backend
       gitops-repository: anomaly51/workload-2-k3s-argocd
       deployment-path: apps/pingme-backend/deployment.yaml
+      deployment-container-name: backend
       app-url: https://pingme-backend.api-api-api.com
       health-url: https://pingme-backend.api-api-api.com/health
       sync-attempts: "45"
