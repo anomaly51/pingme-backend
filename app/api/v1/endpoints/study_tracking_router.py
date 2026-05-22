@@ -1,10 +1,10 @@
-from app.services.tracking_service import TrackingService
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import RoleChecker, get_current_user_obj
 from app.models.user_model import User
 from app.schemas.socket_schemas import ConfirmStudyCreate
-from app.schemas.study_schemas import StudyTrackingCreate
+from app.schemas.study_schemas import FindOfferExtendRequest, StudyTrackingCreate
+from app.services.tracking_service import TrackingService
 
 
 router = APIRouter(prefix="/study-records", tags=["Study Records"])
@@ -26,3 +26,12 @@ async def confirm_study(
     tracking_service: TrackingService = Depends(),
 ):
     return await tracking_service.confirm_study(data.confirm_name, user)
+
+
+@router.post("/find-offer/extend-next-month")
+async def extend_find_offer_next_month(
+    data: FindOfferExtendRequest | None = None,
+    _user: User = Depends(RoleChecker(["manager"])),
+    tracking_service: TrackingService = Depends(),
+):
+    return await tracking_service.extend_find_offer_next_month(data)
