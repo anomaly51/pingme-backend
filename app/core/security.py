@@ -101,22 +101,26 @@ def create_refresh_token(data: dict) -> str:
 
 def create_confirmation_token(email: str) -> str:
     expire = datetime.now(UTC) + timedelta(minutes=15)
-    to_encode = {**_jwt_claims(), "sub": email, "exp": expire, "type": "confirmation"}
+    to_encode = {
+        **_jwt_claims(),
+        "sub": email,
+        "exp": expire,
+        "iat": time.time(),
+        "type": "confirmation",
+        "jti": uuid.uuid4().hex,
+    }
     return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM, headers=_jwt_headers())
 
 
 def decode_app_token(token: str) -> dict:
-    try:
-        return jwt.decode(
-            token,
-            _get_decode_key(token),
-            algorithms=[ALGORITHM],
-            issuer=JWT_ISSUER,
-            audience=JWT_AUDIENCE,
-        )
-    except jwt.MissingRequiredClaimError:
-        # Backward compatibility for tokens created before issuer/audience claims existed.
-        return jwt.decode(token, _get_decode_key(token), algorithms=[ALGORITHM])
+    return jwt.decode(
+        token,
+        _get_decode_key(token),
+        algorithms=[ALGORITHM],
+        issuer=JWT_ISSUER,
+        audience=JWT_AUDIENCE,
+        options={"require": ["exp", "iss", "aud", "sub", "type", "jti"]},
+    )
 
 
 def verify_confirmation_token(token: str) -> str | None:

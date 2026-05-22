@@ -7,12 +7,18 @@ from app.models.user_model import User
 from app.schemas.auth_schemas import (
     AssignAdminRequest,
     AssignManagerRequest,
+    EmailVerificationCodeRequest,
+    EmailVerificationConfirmRequest,
     GoogleLoginRequest,
     LogoutRequest,
     RefreshRequest,
     Token,
 )
-from app.schemas.password_schemas import ChangePasswordRequest, PasswordResetRequest
+from app.schemas.password_schemas import (
+    ChangePasswordRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+)
 from app.schemas.user_schemas import UserCreate, UserProfileUpdate, UserResponse
 from app.services.auth_service import AuthService
 from db.database import get_db
@@ -33,6 +39,22 @@ async def register_user(
 @router.get("/verify-email/{token}")
 async def confirm_email(token: str, auth_service: AuthService = Depends(get_auth_service)):
     return await auth_service.confirm_email(token)
+
+
+@router.post("/verify-email/request")
+async def request_email_verification_code(
+    data: EmailVerificationCodeRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    return await auth_service.send_email_verification_code(str(data.email).lower())
+
+
+@router.post("/verify-email/confirm")
+async def confirm_email_code(
+    data: EmailVerificationConfirmRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    return await auth_service.confirm_email_code(str(data.email).lower(), data.code)
 
 
 @router.post("/login", response_model=Token)
@@ -84,13 +106,21 @@ async def change_password(
 
 
 @router.post("/password-reset/request")
-async def request_password_reset(data: PasswordResetRequest):
-    return {
-        "detail": (
-            "Если аккаунт существует, инструкция по восстановлению будет отправлена на email."
-        ),
-        "email": str(data.email).lower(),
-    }
+async def request_password_reset(
+    data: PasswordResetRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    return await auth_service.request_password_reset(str(data.email).lower())
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    data: PasswordResetConfirmRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    return await auth_service.confirm_password_reset(
+        str(data.email).lower(), data.code, data.new_password
+    )
 
 
 @router.post("/assign-admin", response_model=UserResponse)

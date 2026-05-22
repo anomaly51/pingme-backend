@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.core import security
 from app.core.security import create_refresh_token, decode_app_token
-from app.models.user_model import BlockedToken, User
+from app.models.user_model import BlockedToken, EmailAuthCode, User
 from app.services.auth_service import AuthService
 from tests.conftest import (
     TEST_PASSWORD,
@@ -94,6 +94,63 @@ async def test_register_user_saved_in_db(async_client):
 
     assert user.hashed_password != TEST_PASSWORD
     assert "customer" in user.roles
+
+
+@pytest.mark.asyncio
+async def test_register_sends_email_verification_code(monkeypatch, async_client):
+    sent_codes: list[tuple[str, str]] = []
+
+    def fake_send(email: str, code: str) -> None:
+        sent_codes.append((email, code))
+
+    monkeypatch.setattr("app.services.auth_service.send_email_verification_code", fake_send)
+    email = f"verify_{uuid.uuid4().hex}@test.com"
+
+    response = await async_client.post(
+        "/auth/register", json={"email": email, "password": TEST_PASSWORD}
+    )
+
+    assert response.status_code == 201
+    assert sent_codes == [(email, sent_codes[0][1])]
+    assert sent_codes[0][1].isdigit()
+    assert len(sent_codes[0][1]) == 6
+
+
+@pytest.mark.asyncio
+async def test_confirm_email_with_code(monkeypatch, async_client):
+    sent_codes: list[str] = []
+
+    def fake_send(_email: str, code: str) -> None:
+        sent_codes.append(code)
+
+    monkeypatch.setattr("app.services.auth_service.send_email_verification_code", fake_send)
+    email = f"confirm_{uuid.uuid4().hex}@test.com"
+    await register_user(async_client, email=email)
+
+    response = await async_client.post(
+        "/auth/verify-email/confirm",
+        json={"email": email, "code": sent_codes[-1]},
+    )
+
+    assert response.status_code == 200
+    async with _session_maker() as db:
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        assert user.is_email_confirmed is True
+        code = (
+            await db.execute(select(EmailAuthCode).where(EmailAuthCode.email == email))
+        ).scalar_one()
+        assert code.used_at is not None
+
+
+@pytest.mark.asyncio
+async def test_request_email_verification_code_is_generic_for_missing_user(async_client):
+    response = await async_client.post(
+        "/auth/verify-email/request",
+        json={"email": f"missing_{uuid.uuid4().hex}@test.com"},
+    )
+
+    assert response.status_code == 200
+    assert "detail" in response.json()
 
 
 @pytest.mark.asyncio
@@ -262,7 +319,7 @@ async def test_google_login_rejects_invalid_payloads(monkeypatch, async_client, 
     monkeypatch.setattr(
         AuthService,
         "_verify_google_id_token",
-        staticmethod(lambda _token, _client_id: payload),
+        staticmethod(lambda _token, _client_ids: payload),
     )
     response = await async_client.post(
         "/auth/google",
@@ -274,11 +331,59 @@ async def test_google_login_rejects_invalid_payloads(monkeypatch, async_client, 
 @pytest.mark.asyncio
 async def test_google_login_returns_400_when_not_configured(monkeypatch, async_client):
     monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_IDS", raising=False)
     response = await async_client.post(
         "/auth/google",
         json={"id_token": "valid-google-id-token"},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_google_login_supports_multiple_client_ids(monkeypatch, async_client):
+    monkeypatch.setenv("GOOGLE_CLIENT_IDS", "web-client-id,ios-client-id")
+    monkeypatch.setattr(
+        AuthService,
+        "_verify_google_id_token",
+        staticmethod(
+            lambda _token, _client_ids: {
+                "aud": "ios-client-id",
+                "email": "google_multi@test.com",
+                "email_verified": True,
+            }
+        ),
+    )
+    response = await async_client.post(
+        "/auth/google",
+        json={"id_token": "valid-google-id-token"},
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_google_login_confirms_existing_unconfirmed_user(monkeypatch, async_client):
+    user = await register_user(async_client, email=f"google_existing_{uuid.uuid4().hex}@test.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-client-id")
+    monkeypatch.setattr(
+        AuthService,
+        "_verify_google_id_token",
+        staticmethod(
+            lambda _token, _client_ids: {
+                "aud": "google-client-id",
+                "email": user["email"],
+                "email_verified": True,
+            }
+        ),
+    )
+    response = await async_client.post(
+        "/auth/google",
+        json={"id_token": "valid-google-id-token"},
+    )
+    assert response.status_code == 200
+
+    async with _session_maker() as db:
+        existing = (await db.execute(select(User).where(User.email == user["email"]))).scalar_one()
+        assert existing.is_email_confirmed is True
 
 
 @pytest.mark.asyncio
@@ -575,6 +680,118 @@ async def test_change_password_invalidates_current_token(async_client):
     )
     response = await async_client.get("/auth/me", headers=session["headers"])
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_password_reset_code_changes_password(monkeypatch, async_client):
+    sent_codes: list[str] = []
+
+    def fake_send(_email: str, code: str) -> None:
+        sent_codes.append(code)
+
+    monkeypatch.setattr("app.services.auth_service.send_password_reset_code", fake_send)
+    user = await register_user(async_client)
+
+    request = await async_client.post(
+        "/auth/password-reset/request",
+        json={"email": user["email"]},
+    )
+    assert request.status_code == 200
+    assert sent_codes
+
+    confirm = await async_client.post(
+        "/auth/password-reset/confirm",
+        json={
+            "email": user["email"],
+            "code": sent_codes[-1],
+            "new_password": "ResetPass123",
+        },
+    )
+    assert confirm.status_code == 200
+
+    old_login = await async_client.post(
+        "/auth/login",
+        data={"username": user["email"], "password": TEST_PASSWORD},
+    )
+    new_login = await async_client.post(
+        "/auth/login",
+        data={"username": user["email"], "password": "ResetPass123"},
+    )
+    assert old_login.status_code == 401
+    assert new_login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_password_reset_request_is_generic_for_missing_user(async_client):
+    response = await async_client.post(
+        "/auth/password-reset/request",
+        json={"email": f"missing_{uuid.uuid4().hex}@test.com"},
+    )
+
+    assert response.status_code == 200
+    assert "detail" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_password_reset_rejects_reused_code(monkeypatch, async_client):
+    sent_codes: list[str] = []
+
+    def fake_send(_email: str, code: str) -> None:
+        sent_codes.append(code)
+
+    monkeypatch.setattr("app.services.auth_service.send_password_reset_code", fake_send)
+    user = await register_user(async_client)
+    await async_client.post("/auth/password-reset/request", json={"email": user["email"]})
+
+    first = await async_client.post(
+        "/auth/password-reset/confirm",
+        json={
+            "email": user["email"],
+            "code": sent_codes[-1],
+            "new_password": "ResetPass123",
+        },
+    )
+    second = await async_client.post(
+        "/auth/password-reset/confirm",
+        json={
+            "email": user["email"],
+            "code": sent_codes[-1],
+            "new_password": "ResetPass456",
+        },
+    )
+    assert first.status_code == 200
+    assert second.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_login_cleans_expired_blocked_tokens(async_client):
+    user = await register_user(async_client)
+    async with _session_maker() as db:
+        db.add(
+            BlockedToken(
+                token=uuid.uuid4().hex,
+                expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            )
+        )
+        await db.commit()
+
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": user["email"], "password": TEST_PASSWORD},
+    )
+    assert response.status_code == 200
+
+    async with _session_maker() as db:
+        count = (
+            (
+                await db.execute(
+                    select(BlockedToken).where(BlockedToken.expires_at <= datetime.now(UTC))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert count == []
 
 
 @pytest.mark.asyncio

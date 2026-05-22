@@ -113,6 +113,23 @@ def test_decode_app_token_rejects_wrong_audience():
         decode_app_token(token)
 
 
+def test_decode_app_token_rejects_missing_issuer_and_audience():
+    token = jwt.encode(
+        {
+            "sub": "legacy@example.com",
+            "type": "access",
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
+            "iat": time.time(),
+            "jti": "legacy-token-jti",
+        },
+        security.JWT_SECRET_KEY,
+        algorithm=security.ALGORITHM,
+        headers={"kid": security.JWT_KEY_ID},
+    )
+    with pytest.raises(jwt.MissingRequiredClaimError):
+        decode_app_token(token)
+
+
 def test_verify_token_returns_none_for_expired_token():
     token = jwt.encode(
         {
@@ -172,6 +189,8 @@ def test_confirmation_verifier_returns_expired_for_expired_token():
             "aud": security.JWT_AUDIENCE,
             "type": "confirmation",
             "exp": datetime.now(UTC) - timedelta(seconds=1),
+            "iat": time.time(),
+            "jti": "expired-confirm-jti",
         },
         security.JWT_SECRET_KEY,
         algorithm=security.ALGORITHM,

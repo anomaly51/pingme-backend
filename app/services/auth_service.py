@@ -2,13 +2,13 @@ import asyncio
 import json
 import os
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
 import jwt
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,9 +29,15 @@ from app.core.security import (
     verify_confirmation_token,
     verify_password,
 )
-from app.models.user_model import BlockedToken, User
+from app.models.user_model import BlockedToken, EmailAuthCode, User
 from app.schemas.user_schemas import UserCreate
+from app.services.email_service import send_email_verification_code, send_password_reset_code
 from db.database import get_db
+
+
+EMAIL_VERIFICATION_PURPOSE = "email_verification"
+PASSWORD_RESET_PURPOSE = "password_reset"
+AUTH_CODE_EXPIRE_MINUTES = 15
 
 
 class AuthService:
@@ -63,6 +69,7 @@ class AuthService:
             ) from exc
 
         await self.db.refresh(user)
+        await self.send_email_verification_code(user.email)
         return user
 
     async def authenticate_user(self, email: str, password: str) -> User | None:
@@ -72,6 +79,7 @@ class AuthService:
         return user
 
     async def login_user(self, email: str, password: str) -> dict[str, str]:
+        await self.cleanup_expired_blocked_tokens()
         user = await self.authenticate_user(email, password)
         if not user:
             raise HTTPException(
@@ -83,15 +91,15 @@ class AuthService:
         return self._token_pair(user.email)
 
     async def authenticate_google_user(self, id_token: str) -> User:
-        google_client_id = os.getenv("GOOGLE_CLIENT_ID")
-        if not google_client_id:
+        google_client_ids = self._google_client_ids()
+        if not google_client_ids:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Вход через Google не настроен",
             )
 
-        payload = await asyncio.to_thread(self._verify_google_id_token, id_token, google_client_id)
-        if payload.get("aud") != google_client_id:
+        payload = await asyncio.to_thread(self._verify_google_id_token, id_token, google_client_ids)
+        if payload.get("aud") not in google_client_ids:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Google token выпущен для другого приложения",
@@ -112,6 +120,11 @@ class AuthService:
 
         user = await self._get_user_by_email(email)
         if user:
+            if not user.is_email_confirmed:
+                user.is_email_confirmed = True
+                self.db.add(user)
+                await self.db.commit()
+                await self.db.refresh(user)
             return user
 
         user = User(
@@ -126,19 +139,27 @@ class AuthService:
         return user
 
     @staticmethod
-    def _verify_google_id_token(id_token: str, google_client_id: str) -> dict:
+    def _google_client_ids() -> list[str]:
+        raw_client_ids = os.getenv("GOOGLE_CLIENT_IDS") or os.getenv("GOOGLE_CLIENT_ID", "")
+        return [client_id.strip() for client_id in raw_client_ids.split(",") if client_id.strip()]
+
+    @staticmethod
+    def _verify_google_id_token(id_token: str, google_client_ids: list[str]) -> dict:
         if google_id_token is not None and google_requests is not None:
-            try:
-                return google_id_token.verify_oauth2_token(
-                    id_token,
-                    google_requests.Request(),
-                    google_client_id,
-                )
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Невалидный Google token",
-                ) from exc
+            last_error: Exception | None = None
+            for google_client_id in google_client_ids:
+                try:
+                    return google_id_token.verify_oauth2_token(
+                        id_token,
+                        google_requests.Request(),
+                        google_client_id,
+                    )
+                except Exception as exc:
+                    last_error = exc
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Невалидный Google token",
+            ) from last_error
 
         query = urlencode({"id_token": id_token})
         try:
@@ -149,6 +170,67 @@ class AuthService:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Невалидный Google token",
             ) from exc
+
+    async def send_email_verification_code(self, email: str) -> dict[str, str]:
+        user = await self._get_user_by_email(email)
+        if user and not user.is_email_confirmed:
+            code = await self._create_auth_code(user.email, EMAIL_VERIFICATION_PURPOSE)
+            try:
+                await asyncio.to_thread(send_email_verification_code, user.email, code)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Не удалось отправить код подтверждения email",
+                ) from exc
+
+        return {"detail": "Если аккаунт существует, код подтверждения будет отправлен на email."}
+
+    async def confirm_email_code(self, email: str, code: str) -> dict[str, str]:
+        user = await self._get_user_by_email(email)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid code")
+
+        if not await self._consume_auth_code(user.email, EMAIL_VERIFICATION_PURPOSE, code):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid code")
+
+        user.is_email_confirmed = True
+        self.db.add(user)
+        await self.db.commit()
+        return {"message": "Email confirmed successfully"}
+
+    async def request_password_reset(self, email: str) -> dict[str, str]:
+        user = await self._get_user_by_email(email)
+        if user:
+            code = await self._create_auth_code(user.email, PASSWORD_RESET_PURPOSE)
+            try:
+                await asyncio.to_thread(send_password_reset_code, user.email, code)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Не удалось отправить код восстановления пароля",
+                ) from exc
+
+        return {
+            "detail": (
+                "Если аккаунт существует, инструкция по восстановлению будет отправлена на email."
+            )
+        }
+
+    async def confirm_password_reset(
+        self, email: str, code: str, new_password: str
+    ) -> dict[str, str]:
+        user = await self._get_user_by_email(email)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid code")
+
+        if not await self._consume_auth_code(user.email, PASSWORD_RESET_PURPOSE, code):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid code")
+
+        user.hashed_password = get_password_hash(new_password)
+        user.password_changed_at = datetime.now(UTC)
+        self.db.add(user)
+        await self.db.commit()
+        return {"detail": "Пароль успешно изменён"}
 
     async def confirm_email(self, token: str) -> dict[str, str]:
         email = verify_confirmation_token(token)
@@ -200,6 +282,7 @@ class AuthService:
         await self.db.commit()
 
     async def refresh_access_token(self, refresh_token: str) -> dict[str, str]:
+        await self.cleanup_expired_blocked_tokens()
         try:
             payload = decode_app_token(refresh_token)
         except jwt.PyJWTError as exc:
@@ -247,6 +330,7 @@ class AuthService:
         return self._token_pair(user.email)
 
     async def logout(self, access_token: str, refresh_token: str | None = None) -> None:
+        await self.cleanup_expired_blocked_tokens()
         for token, expected_type in ((access_token, "access"), (refresh_token, "refresh")):
             if not token:
                 continue
@@ -279,6 +363,68 @@ class AuthService:
     async def _get_blocked_token(self, jti: str) -> BlockedToken | None:
         result = await self.db.execute(select(BlockedToken).where(BlockedToken.token == jti))
         return result.scalar_one_or_none()
+
+    async def cleanup_expired_blocked_tokens(self) -> int:
+        result = await self.db.execute(
+            delete(BlockedToken).where(BlockedToken.expires_at <= datetime.now(UTC))
+        )
+        await self.db.commit()
+        return result.rowcount or 0
+
+    async def cleanup_expired_auth_codes(self) -> int:
+        result = await self.db.execute(
+            delete(EmailAuthCode).where(EmailAuthCode.expires_at <= datetime.now(UTC))
+        )
+        await self.db.commit()
+        return result.rowcount or 0
+
+    async def _create_auth_code(self, email: str, purpose: str) -> str:
+        await self.cleanup_expired_auth_codes()
+        normalized_email = str(email).lower()
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = datetime.now(UTC)
+
+        await self.db.execute(
+            update(EmailAuthCode)
+            .where(
+                EmailAuthCode.email == normalized_email,
+                EmailAuthCode.purpose == purpose,
+                EmailAuthCode.used_at.is_(None),
+            )
+            .values(used_at=now)
+        )
+        self.db.add(
+            EmailAuthCode(
+                email=normalized_email,
+                purpose=purpose,
+                code_hash=get_password_hash(code),
+                expires_at=now + timedelta(minutes=AUTH_CODE_EXPIRE_MINUTES),
+            )
+        )
+        await self.db.commit()
+        return code
+
+    async def _consume_auth_code(self, email: str, purpose: str, code: str) -> bool:
+        await self.cleanup_expired_auth_codes()
+        normalized_email = str(email).lower()
+        result = await self.db.execute(
+            select(EmailAuthCode)
+            .where(
+                EmailAuthCode.email == normalized_email,
+                EmailAuthCode.purpose == purpose,
+                EmailAuthCode.used_at.is_(None),
+                EmailAuthCode.expires_at > datetime.now(UTC),
+            )
+            .order_by(EmailAuthCode.created_at.desc(), EmailAuthCode.id.desc())
+        )
+        auth_code = result.scalars().first()
+        if not auth_code or not verify_password(code, auth_code.code_hash):
+            return False
+
+        auth_code.used_at = datetime.now(UTC)
+        self.db.add(auth_code)
+        await self.db.commit()
+        return True
 
     async def _block_jti(self, jti: str, expires_at: datetime) -> None:
         self.db.add(BlockedToken(token=jti, expires_at=expires_at))

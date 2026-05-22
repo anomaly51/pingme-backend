@@ -43,6 +43,22 @@ class BlockedToken(Base):
     )
 
 
+class EmailAuthCode(Base):
+    __tablename__ = "email_auth_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    purpose: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    code_hash: Mapped[str] = mapped_column(String, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=text("now()"),
+    )
+
+
 class Form(Base):
     __tablename__ = "forms"
 
