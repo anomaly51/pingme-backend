@@ -1,4 +1,5 @@
 import os
+from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -33,13 +34,20 @@ users_router = APIRouter(prefix="/users", tags=["Users"])
 REFRESH_COOKIE_NAME = "refresh_token"
 
 
+def refresh_cookie_samesite() -> Literal["lax", "strict", "none"]:
+    raw_value = os.getenv("COOKIE_SAMESITE", "lax").lower()
+    if raw_value in {"lax", "strict", "none"}:
+        return cast(Literal["lax", "strict", "none"], raw_value)
+    return "lax"
+
+
 def set_refresh_cookie(response: Response, refresh_token: str) -> None:
     response.set_cookie(
         REFRESH_COOKIE_NAME,
         refresh_token,
         httponly=True,
         secure=os.getenv("COOKIE_SECURE", "false").lower() in {"1", "true", "yes"},
-        samesite=os.getenv("COOKIE_SAMESITE", "lax"),
+        samesite=refresh_cookie_samesite(),
         max_age=int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7")) * 24 * 60 * 60,
         path="/auth",
     )
@@ -123,15 +131,16 @@ async def refresh_access_token(
 
 @router.post("/logout")
 async def logout_user(
-    data: LogoutRequest,
     request: Request,
     response: Response,
+    data: LogoutRequest | None = None,
     current_user: User = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
     auth_header = request.headers.get("Authorization", "")
     access_token = auth_header.removeprefix("Bearer ").strip()
-    refresh_token = data.refresh_token or request.cookies.get(REFRESH_COOKIE_NAME)
+    refresh_token = data.refresh_token if data else None
+    refresh_token = refresh_token or request.cookies.get(REFRESH_COOKIE_NAME)
     await auth_service.logout(access_token=access_token, refresh_token=refresh_token)
     clear_refresh_cookie(response)
     return {"detail": "Выход выполнен успешно", "user": current_user.email}

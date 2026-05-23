@@ -1,9 +1,9 @@
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
-    Column,
     DateTime,
     ForeignKey,
     Index,
@@ -32,14 +32,18 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     push_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
-    notification_preferences: Mapped[dict] = mapped_column(
+    notification_preferences: Mapped[dict[str, bool]] = mapped_column(
         JSON,
         nullable=False,
         default=lambda: {"realtime": True, "email": False, "push": False},
         server_default='{"realtime": true, "email": false, "push": false}',
     )
     is_email_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
-    roles = Column(ARRAY(String), default=lambda: ["customer"], server_default="{}")
+    roles: Mapped[list[str]] = mapped_column(
+        ARRAY(String),
+        default=lambda: ["customer"],
+        server_default="{}",
+    )
     password_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -108,13 +112,13 @@ class Form(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    form_structure: Mapped[dict] = mapped_column(JSON, nullable=False)
-    schedule_crons: Mapped[list] = mapped_column(JSON, nullable=False)
+    form_structure: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    schedule_crons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     reminder_title: Mapped[str | None] = mapped_column(String, nullable=True)
-    reminder_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    reminder_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     skip_retry_delay_seconds: Mapped[int] = mapped_column(
         Integer, nullable=False, default=3600, server_default="3600"
     )
@@ -132,7 +136,7 @@ class Answer(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     form_id: Mapped[int] = mapped_column(ForeignKey("forms.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    answers_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    answers_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -145,7 +149,7 @@ class Reminder(Base):
         ForeignKey("forms.id", ondelete="CASCADE"), index=True, nullable=True
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
-    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(32), index=True, nullable=False, default="pending")
     retry_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=3600)
     delivery_retry_delay_seconds: Mapped[int] = mapped_column(

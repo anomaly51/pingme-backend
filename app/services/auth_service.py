@@ -4,6 +4,7 @@ import os
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -12,14 +13,6 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-
-try:
-    from google.auth.transport import requests as google_requests
-    from google.oauth2 import id_token as google_id_token
-except ImportError:
-    google_id_token = None
-    google_requests = None
 
 from app.core.security import (
     create_access_token,
@@ -35,6 +28,15 @@ from app.schemas.user_schemas import UserCreate
 from app.services.email_service import send_email_verification_code, send_password_reset_code
 from db.database import SessionLocal, get_db
 
+
+google_requests: Any
+google_id_token: Any
+try:
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+except ImportError:
+    google_id_token = None
+    google_requests = None
 
 EMAIL_VERIFICATION_PURPOSE = "email_verification"
 PASSWORD_RESET_PURPOSE = "password_reset"
@@ -149,19 +151,22 @@ class AuthService:
 
     @staticmethod
     def _google_client_ids() -> list[str]:
-        raw_client_ids = os.getenv("GOOGLE_CLIENT_IDS") or os.getenv("GOOGLE_CLIENT_ID", "")
+        raw_client_ids = str(os.getenv("GOOGLE_CLIENT_IDS") or os.getenv("GOOGLE_CLIENT_ID", ""))
         return [client_id.strip() for client_id in raw_client_ids.split(",") if client_id.strip()]
 
     @staticmethod
-    def _verify_google_id_token(id_token: str, google_client_ids: list[str]) -> dict:
+    def _verify_google_id_token(id_token: str, google_client_ids: list[str]) -> dict[str, Any]:
         if google_id_token is not None and google_requests is not None:
             last_error: Exception | None = None
             for google_client_id in google_client_ids:
                 try:
-                    return google_id_token.verify_oauth2_token(
-                        id_token,
-                        google_requests.Request(),
-                        google_client_id,
+                    return cast(
+                        dict[str, Any],
+                        google_id_token.verify_oauth2_token(
+                            id_token,
+                            google_requests.Request(),
+                            google_client_id,
+                        ),
                     )
                 except Exception as exc:
                     last_error = exc
@@ -173,7 +178,7 @@ class AuthService:
         query = urlencode({"id_token": id_token})
         try:
             with urlopen(f"https://oauth2.googleapis.com/tokeninfo?{query}", timeout=5) as res:
-                return json.loads(res.read().decode("utf-8"))
+                return cast(dict[str, Any], json.loads(res.read().decode("utf-8")))
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -341,13 +346,25 @@ class AuthService:
         blocked = await self._get_blocked_token(jti)
         if blocked:
             await self._revoke_session(session)
+            await self.db.commit()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Этот refresh token был отозван или уже использован. Авторизуйтесь заново.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        await self._block_jti(jti, datetime.fromtimestamp(payload["exp"], tz=UTC))
+        blocked_current_refresh = await self._block_jti(
+            jti,
+            datetime.fromtimestamp(payload["exp"], tz=UTC),
+        )
+        if not blocked_current_refresh:
+            await self._revoke_session(session)
+            await self.db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token reuse detected. Авторизуйтесь заново.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         await self.db.commit()
         return await self._token_pair(user, session=session)
 
@@ -392,23 +409,27 @@ class AuthService:
             delete(BlockedToken).where(BlockedToken.expires_at <= datetime.now(UTC))
         )
         await self.db.commit()
-        return result.rowcount or 0
+        return int(cast(Any, result).rowcount or 0)
 
     async def cleanup_expired_auth_codes(self) -> int:
         result = await self.db.execute(
             delete(EmailAuthCode).where(EmailAuthCode.expires_at <= datetime.now(UTC))
         )
         await self.db.commit()
-        return result.rowcount or 0
+        return int(cast(Any, result).rowcount or 0)
 
     async def cleanup_expired_auth_sessions(self) -> int:
         result = await self.db.execute(
             delete(AuthSession).where(AuthSession.expires_at <= datetime.now(UTC))
         )
         await self.db.commit()
-        return result.rowcount or 0
+        return int(cast(Any, result).rowcount or 0)
 
-    async def list_sessions(self, user: User, current_token: str | None = None) -> list[dict]:
+    async def list_sessions(
+        self,
+        user: User,
+        current_token: str | None = None,
+    ) -> list[dict[str, Any]]:
         current_session_id = None
         if current_token:
             try:
@@ -517,12 +538,17 @@ class AuthService:
         await self.db.commit()
         return True
 
-    async def _block_jti(self, jti: str, expires_at: datetime) -> None:
-        self.db.add(BlockedToken(token=jti, expires_at=expires_at))
+    async def _block_jti(self, jti: str, expires_at: datetime) -> bool:
+        if await self._get_blocked_token(jti):
+            return False
+
         try:
-            await self.db.flush()
+            async with self.db.begin_nested():
+                self.db.add(BlockedToken(token=jti, expires_at=expires_at))
+                await self.db.flush()
         except IntegrityError:
-            await self.db.rollback()
+            return False
+        return True
 
     async def _token_pair(self, user: User, session: AuthSession | None = None) -> dict[str, str]:
         session_id = session.session_id if session else uuid.uuid4().hex
@@ -605,7 +631,7 @@ class AuthService:
             )
 
     @staticmethod
-    def _ensure_token_is_new_enough(payload: dict, user: User) -> None:
+    def _ensure_token_is_new_enough(payload: dict[str, Any], user: User) -> None:
         if not user.password_changed_at:
             return
 

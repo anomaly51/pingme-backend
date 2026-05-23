@@ -66,6 +66,7 @@ class TrackingService:
         self.db = db
 
     async def add_study_tracking(self, data: StudyTrackingCreate, user: User) -> dict[str, Any]:
+        student_name = participant_name_for_email(user.email)
         row_idx = await update_study_data(
             email=user.email, activity=data.activity, hours=data.hours_spent
         )
@@ -74,7 +75,6 @@ class TrackingService:
         result = await self.db.execute(manager_query)
         manager_ids = result.scalars().all()
 
-        student_name = user.email.split("@")[0].capitalize()
         payload = {
             "student_name": student_name,
             "activity": data.activity,
@@ -83,16 +83,17 @@ class TrackingService:
         }
 
         for m_id in manager_ids:
-            await sio.emit("study_record.created", payload, room=f"user:{m_id}")
+            await sio.emit("study_record.created", payload, room=f"user_{m_id}")
 
         return {"message": "Data added to Google Sheet"}
 
     async def confirm_study(self, confirm_name: str, user: User) -> dict[str, Any]:
-        manager_name = user.email.split("@")[0].capitalize()
+        manager_name = participant_name_for_email(user.email)
+        student_name = normalize_participant_name(confirm_name)
 
-        await confirm_study_data(student_name=confirm_name, manager_name=manager_name)
+        await confirm_study_data(student_name=student_name, manager_name=manager_name)
 
-        return {"message": f"{manager_name} checked for {confirm_name}"}
+        return {"message": f"{manager_name} checked for {student_name}"}
 
     async def extend_find_offer_next_month(
         self,
@@ -157,7 +158,7 @@ class TrackingService:
 
         credentials_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "google_services.json")
         try:
-            credentials = Credentials.from_service_account_file(
+            credentials = Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
                 credentials_path,
                 scopes=GOOGLE_SCOPES,
             )
@@ -172,7 +173,8 @@ class TrackingService:
                 detail=f"Could not open Find offer spreadsheet: {exc}",
             ) from exc
 
-        existing_dates = set(worksheet.col_values(1))
+        first_column_values = [str(value) for value in worksheet.col_values(1) if value]
+        existing_dates = set(first_column_values)
         if requested_date is None:
             latest_date = latest_tracker_date(existing_dates, fallback_year=year)
             year, month = next_target_month_after_completed_block(latest_date)
@@ -181,13 +183,13 @@ class TrackingService:
         if format_tracker_date(first_generated_date) in existing_dates:
             return {"extended": False, "reason": "month_already_exists", "rows_added": 0}
 
-        start_row = next_find_offer_append_row(worksheet.col_values(1))
+        start_row = next_find_offer_append_row(first_column_values)
         rows = build_find_offer_month_rows(year, month, participants, start_sheet_row=start_row)
         self._insert_formatted_rows(worksheet, start_row, len(rows))
         worksheet.update(
             values=rows,
             range_name=f"A{start_row}:X{start_row + len(rows) - 1}",
-            value_input_option="USER_ENTERED",
+            value_input_option="USER_ENTERED",  # type: ignore[arg-type]
         )
         self._squash_separator_rows(worksheet, start_row, len(rows))
         return {
@@ -534,6 +536,27 @@ def next_find_offer_append_row(first_column_values: list[str]) -> int:
         return row_number + 1
 
     return 1
+
+
+def normalize_participant_name(value: str) -> str:
+    normalized = value.strip().lower()
+    for participant_name in EMAIL_TO_NAME.values():
+        if participant_name.lower() == normalized:
+            return participant_name
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"Unknown participant: {value}",
+    )
+
+
+def participant_name_for_email(email: str) -> str:
+    participant_name = EMAIL_TO_NAME.get(email.lower())
+    if participant_name:
+        return participant_name
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Your email is not linked to the study tracker.",
+    )
 
 
 def parse_tracker_date(value: str, fallback_year: int) -> date | None:

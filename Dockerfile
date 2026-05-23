@@ -25,5 +25,6 @@ COPY ./app /code/app
 COPY ./db /code/db
 COPY ./alembic /code/alembic
 COPY ./alembic.ini /code/alembic.ini
+COPY ./scripts /code/scripts
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "scripts/start_api.sh"]

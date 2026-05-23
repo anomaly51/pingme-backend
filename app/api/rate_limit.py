@@ -1,7 +1,7 @@
 import os
 import time
 from collections import defaultdict, deque
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException, Request, status
 
@@ -9,9 +9,13 @@ from fastapi import HTTPException, Request, status
 _buckets: dict[str, deque[float]] = defaultdict(deque)
 
 
-def rate_limit(name: str, limit: int = 10, window_seconds: int = 60) -> Callable[[Request], None]:
+def rate_limit(
+    name: str,
+    limit: int = 10,
+    window_seconds: int = 60,
+) -> Callable[[Request], Awaitable[None]]:
     async def dependency(request: Request) -> None:
-        if os.getenv("TESTING") == "True":
+        if os.getenv("TESTING", "").lower() in {"1", "true", "yes"}:
             return
 
         client_host = request.client.host if request.client else "unknown"

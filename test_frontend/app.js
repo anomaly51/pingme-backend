@@ -25,9 +25,15 @@ async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    credentials: "include",
   });
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { detail: text || response.statusText };
+  }
   if (!response.ok) {
     throw { status: response.status, payload };
   }
@@ -90,7 +96,7 @@ async function login() {
   token = data.access_token;
   localStorage.setItem("pingme_token", token);
   showOutput("authOutput", data);
-    log("Вход выполнен");
+  log("Вход выполнен");
   connectSocket();
   await Promise.all([loadForms(), loadReminders()]);
 }
@@ -318,7 +324,17 @@ async function loadStats() {
   log("Статистика загружена", data);
 }
 
-function logout() {
+async function logout() {
+  if (token) {
+    try {
+      await request("/auth/logout", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    } catch (error) {
+      log("Не удалось отозвать серверную сессию", error.payload || error);
+    }
+  }
   token = "";
   localStorage.removeItem("pingme_token");
   if (socket) socket.disconnect();

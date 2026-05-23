@@ -3,6 +3,7 @@ import logging
 import os
 import smtplib
 from email.message import EmailMessage
+from typing import Any
 from urllib import request
 
 
@@ -65,7 +66,7 @@ def send_reminder_notification(email: str, title: str) -> None:
     )
 
 
-def send_push_notification(push_token: str, title: str, payload: dict) -> None:
+def send_push_notification(push_token: str, title: str, payload: dict[str, Any]) -> None:
     webhook_url = os.getenv("PUSH_WEBHOOK_URL")
     if not webhook_url:
         logger.info("Push delivery is not configured. Token=%s title=%s", push_token, title)

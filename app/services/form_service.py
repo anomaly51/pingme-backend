@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user_model import Form, User
+from app.models.user_model import Form, Reminder, User
 from app.schemas.form_schemas import FormCreate, FormResponse, FormUpdate, ReminderSettingsUpdate
 from db.database import get_db
 
@@ -82,6 +82,18 @@ class FormService:
         now = datetime.now(UTC)
         form.is_active = False
         form.archived_at = now
+        active_reminders = await self.db.execute(
+            select(Reminder).where(
+                Reminder.form_id == form.id,
+                Reminder.user_id == user.id,
+                Reminder.status.in_({"pending", "skipped"}),
+            )
+        )
+        for reminder in active_reminders.scalars().all():
+            reminder.status = "cancelled"
+            reminder.updated_at = now
+            self.db.add(reminder)
+
         await self.db.commit()
         await self.db.refresh(form)
         return form

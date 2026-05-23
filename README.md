@@ -48,6 +48,7 @@ cp .env.example .env
 For development, you can run the application locally:
 
 ```bash
+poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload
 ```
 
@@ -60,6 +61,9 @@ Alternatively, build the images and start the containers in the background:
 ```bash
 docker compose up --build -d
 ```
+
+The Docker API container runs `alembic upgrade head` before starting Uvicorn by default.
+Set `RUN_MIGRATIONS=false` if migrations are managed separately.
 
 ### 7. Check the API Documentation (Swagger)
 

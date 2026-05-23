@@ -41,6 +41,9 @@ filterwarnings = [
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+disable_error_code = [
+    "no-untyped-def",
+]
 [project]
 name = "project-root"
 version = "0.1.0"

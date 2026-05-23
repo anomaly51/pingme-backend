@@ -11,8 +11,19 @@ def is_production() -> bool:
 def cors_origins() -> list[str]:
     raw = os.getenv("CORS_ORIGINS", "")
     if not raw:
-        return [] if is_production() else ["*"]
+        if is_production():
+            return []
+        return [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+        ]
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def cors_allow_credentials() -> bool:
+    return "*" not in cors_origins()
 
 
 def validate_production_config() -> None:
@@ -20,7 +31,6 @@ def validate_production_config() -> None:
         return
 
     required = [
-        "SECRET_KEY",
         "DATABASE_URL",
         "RABBITMQ_URL",
     ]
@@ -28,8 +38,13 @@ def validate_production_config() -> None:
     if missing:
         raise RuntimeError(f"Missing production environment variables: {', '.join(missing)}")
 
+    if not os.getenv("SECRET_KEY") and not os.getenv("JWT_SECRET_KEYS"):
+        raise RuntimeError("SECRET_KEY or JWT_SECRET_KEYS must be configured in production")
+
     if not cors_origins():
         raise RuntimeError("CORS_ORIGINS must be configured in production")
+    if "*" in cors_origins():
+        raise RuntimeError("CORS_ORIGINS cannot contain '*' in production")
 
     if os.getenv("COOKIE_SECURE", "false").lower() not in TRUTHY:
         raise RuntimeError("COOKIE_SECURE must be true in production")

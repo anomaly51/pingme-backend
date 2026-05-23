@@ -26,7 +26,7 @@ class ReminderService:
 
     async def create_reminder(self, data: ReminderCreate, user: User) -> Reminder:
         if data.form_id is not None:
-            await self._ensure_user_form(data.form_id, user)
+            await self._ensure_user_active_form(data.form_id, user)
 
         now = datetime.now(UTC)
         reminder = Reminder(
@@ -43,7 +43,14 @@ class ReminderService:
             updated_at=now,
         )
         self.db.add(reminder)
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Active reminder for this form already exists",
+            ) from exc
         await self.db.refresh(reminder)
         await self.enqueue_reminder(reminder)
         return reminder
@@ -75,7 +82,7 @@ class ReminderService:
         if due_only:
             query = query.where(Reminder.next_run_at <= datetime.now(UTC))
         query = (
-            query.order_by(Reminder.next_run_at.desc(), Reminder.id.desc())
+            query.order_by(Reminder.next_run_at.asc(), Reminder.id.asc())
             .limit(limit)
             .offset(offset)
         )
@@ -134,10 +141,18 @@ class ReminderService:
     async def requeue_stale_pending_reminders(self, now: datetime | None = None) -> list[Reminder]:
         now = now or datetime.now(UTC)
         result = await self.db.execute(
-            select(Reminder).where(
+            select(Reminder)
+            .outerjoin(Form, Form.id == Reminder.form_id)
+            .where(
                 Reminder.status == "pending",
                 Reminder.last_delivered_at.is_not(None),
                 Reminder.completed_at.is_(None),
+                (Reminder.form_id.is_(None))
+                | (
+                    Form.reminder_enabled.is_(True)
+                    & Form.is_active.is_(True)
+                    & Form.archived_at.is_(None)
+                ),
             )
         )
         requeued: list[Reminder] = []
@@ -211,7 +226,8 @@ class ReminderService:
         return reminder
 
     async def enqueue_reminder(self, reminder: Reminder) -> None:
-        delay_seconds = max(int((reminder.next_run_at - datetime.now(UTC)).total_seconds()), 0)
+        next_run_at = ensure_aware_utc(reminder.next_run_at)
+        delay_seconds = max(int((next_run_at - datetime.now(UTC)).total_seconds()), 0)
         try:
             publish_result = await publish_reminder(reminder.id, delay_seconds)
         except Exception as exc:
@@ -244,6 +260,21 @@ class ReminderService:
         )
         if result.scalar_one_or_none() is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+
+    async def _ensure_user_active_form(self, form_id: int, user: User) -> None:
+        result = await self.db.execute(
+            select(Form.id).where(
+                Form.id == form_id,
+                Form.user_id == user.id,
+                Form.is_active.is_(True),
+                Form.archived_at.is_(None),
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Active form not found",
+            )
 
     async def _has_active_form_reminder(self, user_id: int, form_id: int) -> bool:
         result = await self.db.execute(
@@ -283,6 +314,7 @@ def next_schedule_interval_seconds(schedule_crons: list[str]) -> int | None:
 
 
 def should_schedule_form_reminder(form: Form, now: datetime, timezone_name: str = "UTC") -> bool:
+    now = ensure_aware_utc(now)
     if any(
         is_time_schedule_due(schedule, form.last_reminder_scheduled_at, now, timezone_name)
         for schedule in form.schedule_crons or []
@@ -296,8 +328,7 @@ def should_schedule_form_reminder(form: Form, now: datetime, timezone_name: str 
     last_scheduled_at = form.last_reminder_scheduled_at
     if last_scheduled_at is None:
         return True
-    if last_scheduled_at.tzinfo is None:
-        last_scheduled_at = last_scheduled_at.replace(tzinfo=UTC)
+    last_scheduled_at = ensure_aware_utc(last_scheduled_at)
     return last_scheduled_at + timedelta(seconds=interval) <= now
 
 
@@ -310,6 +341,7 @@ def is_time_schedule_due(
     parsed = parse_time_schedule(schedule)
     if parsed is None:
         return False
+    now = ensure_aware_utc(now)
 
     weekdays, hour, minute = parsed
     try:

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import Depends, HTTPException
 from sqlalchemy import func, select
@@ -18,13 +19,23 @@ class AnswerService:
     def __init__(self, db: AsyncSession = Depends(get_db)):
         self.db = db
 
-    async def create_answer(self, form_id: int, answer_data: AnswerCreate, user: User) -> dict:
-        form_query = select(Form).where(Form.id == form_id, Form.user_id == user.id)
+    async def create_answer(
+        self,
+        form_id: int,
+        answer_data: AnswerCreate,
+        user: User,
+    ) -> dict[str, Any]:
+        form_query = select(Form).where(
+            Form.id == form_id,
+            Form.user_id == user.id,
+            Form.is_active.is_(True),
+            Form.archived_at.is_(None),
+        )
         form_result = await self.db.execute(form_query)
         form = form_result.scalar_one_or_none()
 
         if not form:
-            raise HTTPException(status_code=404, detail="Specified form not found")
+            raise HTTPException(status_code=404, detail="Active form not found")
         try:
             validate_answers_against_form_structure(answer_data.answers_data, form.form_structure)
         except ValueError as exc:
