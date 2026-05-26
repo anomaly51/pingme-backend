@@ -61,6 +61,15 @@ Alternatively, build the images and start the containers in the background:
 docker compose up --build -d
 ```
 
+Run database migrations explicitly:
+
+```bash
+docker compose --profile tools run --rm migrate
+```
+
+The API container does not run migrations on startup. Keep migrations as a separate
+deploy step or Kubernetes Job so a schema problem cannot crash-loop the API.
+
 ### 7. Check the API Documentation (Swagger)
 
 Once the application is running, open your web browser and navigate to:
@@ -93,6 +102,19 @@ The local test database URL is:
 ```bash
 TEST_DATABASE_URL=postgresql+asyncpg://test_user:test_password@localhost:5435/test_db
 ```
+
+### Production Notes
+
+- `CORS_ORIGINS` must be explicit in production; `*` is rejected.
+- `COOKIE_SECURE=true` is required in production.
+- `/health/live` is for liveness.
+- `/health/ready` checks PostgreSQL and RabbitMQ and returns `503` when either is unavailable.
+- `REMINDER_SCHEDULER_ENABLED=false` should be set on API replicas when a separate scheduler deployment is used.
+- Run one scheduler process with `python -m app.services.reminder_scheduler`.
+- Run reminder workers with `python -m app.services.reminder_worker`.
+- Set `LOG_LEVEL=INFO` or stricter in production. Request logs include `x-request-id`.
+- Set `SQLALCHEMY_ECHO=true` only for local debugging.
+- Deploy still requires a valid `ARGOCD_AUTH_TOKEN` secret for the GitHub Actions sync step.
 
 ### Stopping the project
 

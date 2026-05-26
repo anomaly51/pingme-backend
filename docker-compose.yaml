@@ -56,6 +56,34 @@ services:
     environment:
       - TESTING=False
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - REMINDER_SCHEDULER_ENABLED=false
+
+  migrate:
+    build: .
+    command: sh scripts/run_migrations.sh
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    profiles:
+      - tools
+
+  reminder_scheduler:
+    build: .
+    volumes:
+      - .:/code
+    command: python -m app.services.reminder_scheduler
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - TESTING=False
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
   reminder_worker:
     build: .
