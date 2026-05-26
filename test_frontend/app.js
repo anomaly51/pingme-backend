@@ -4,6 +4,10 @@ let token = localStorage.getItem("pingme_token") || "";
 let forms = [];
 let reminders = [];
 let socket = null;
+let scheduleTimes = ["20:00"];
+let reminderHistoryVisible = false;
+let answerHistoryVisible = false;
+let answerHistory = [];
 
 const $ = (id) => document.getElementById(id);
 
@@ -228,6 +232,38 @@ function renderForms() {
   }
 }
 
+function renderScheduleTimes() {
+  const host = $("scheduleTimesHost");
+  host.innerHTML = "";
+
+  scheduleTimes.forEach((time, index) => {
+    const row = document.createElement("span");
+    row.className = `time-row${scheduleTimes.length === 1 ? " single" : ""}`;
+    const removeButton =
+      scheduleTimes.length > 1
+        ? `<button class="ghost small" type="button" data-action="remove-schedule-time" data-index="${index}">Удалить</button>`
+        : "";
+    row.innerHTML = `
+      <input class="schedule-time-input" type="time" value="${escapeHtml(time)}" aria-label="Время напоминания ${index + 1}" />
+      ${removeButton}
+    `;
+    host.appendChild(row);
+  });
+}
+
+function addScheduleTime() {
+  scheduleTimes.push("20:00");
+  renderScheduleTimes();
+  const inputs = document.querySelectorAll(".schedule-time-input");
+  inputs[inputs.length - 1]?.focus();
+}
+
+function syncScheduleTimesFromInputs() {
+  scheduleTimes = [...document.querySelectorAll(".schedule-time-input")]
+    .map((input) => input.value.trim())
+    .filter(Boolean);
+}
+
 function renderFormOptions() {
   const selects = [$("answerFormSelect"), $("reminderFormSelect")];
   const previousValue = $("answerFormSelect").value || $("reminderFormSelect").value;
@@ -287,9 +323,12 @@ function updateReminderFormSelection() {
 async function createForm() {
   const title = $("formTitleInput").value.trim();
   const skipDelay = Number($("skipDelayInput").value);
-  const maxMinutes = Number($("maxMinutesInput").value);
+  const maxMinutes = Number($("maxHoursInput").value || 0) * 60;
+  const scheduleCrons = buildScheduleCrons();
 
   if (!title) throw new Error("Введите название активности.");
+  if (maxMinutes <= 0) throw new Error("Лимит ответа по длительности должен быть больше нуля.");
+  if (!scheduleCrons.length) throw new Error("Добавьте хотя бы одно время напоминания.");
 
   const data = await request("/forms", {
     method: "POST",
@@ -300,7 +339,7 @@ async function createForm() {
         fields: [
           {
             name: "minutes",
-            label: "Сколько минут занимался",
+            label: "Длительность занятия в минутах",
             type: "number",
             required: true,
             min: 0,
@@ -310,11 +349,11 @@ async function createForm() {
             name: "mood",
             label: "Настроение",
             type: "select",
-            options: ["bad", "ok", "good"],
+            options: ["terrible", "bad", "tired", "ok", "calm", "good", "great", "focused", "inspired"],
           },
         ],
       },
-      schedule_crons: [$("scheduleInput").value.trim()],
+      schedule_crons: scheduleCrons,
       is_active: true,
       reminder_enabled: true,
       reminder_title: `Сколько времени: ${title.toLowerCase()}?`,
@@ -330,6 +369,13 @@ async function createForm() {
   updateSelectedFormInfo();
 }
 
+function buildScheduleCrons() {
+  syncScheduleTimesFromInputs();
+  return scheduleTimes
+    .filter(Boolean)
+    .map((time) => `daily ${time}`);
+}
+
 async function loadReminders() {
   reminders = await request("/reminders?limit=20");
   renderReminders();
@@ -339,31 +385,65 @@ async function loadReminders() {
 
 function renderReminders() {
   const host = $("remindersList");
+  const historyHost = $("reminderHistoryList");
+  const activeReminders = reminders.filter((reminder) => isActiveReminder(reminder));
+  const historyReminders = reminders.filter((reminder) => !isActiveReminder(reminder));
+
   host.innerHTML = "";
+  historyHost.innerHTML = "";
 
-  if (!reminders.length) {
+  if (!activeReminders.length) {
     host.innerHTML = '<div class="result muted">Напоминаний пока нет. Нажми “Спросить сейчас”.</div>';
-    return;
   }
 
-  for (const reminder of reminders) {
-    const item = document.createElement("div");
-    item.className = "item";
-    item.innerHTML = `
-      <div class="item-title">
-        <span>${escapeHtml(reminder.title)}</span>
-        <span class="pill muted">${translateStatus(reminder.status)}</span>
-      </div>
-      <div class="meta">Форма: ${reminder.form_id || "нет"} | очередь: ${translateEnqueue(reminder.enqueue_status)}</div>
-      <div class="meta">Следующий показ: ${formatDate(reminder.next_run_at)}</div>
-      <div class="actions">
-        <button class="secondary" data-action="skip" data-id="${reminder.id}">Позже на 30 минут</button>
-        <button class="secondary" data-action="complete" data-id="${reminder.id}">Готово</button>
-        <button class="ghost" data-action="cancel" data-id="${reminder.id}">Отменить</button>
-      </div>
-    `;
-    host.appendChild(item);
+  for (const reminder of activeReminders) {
+    host.appendChild(createReminderItem(reminder, true));
   }
+
+  if (!historyReminders.length) {
+    historyHost.innerHTML = '<div class="result muted">История пока пустая.</div>';
+  }
+
+  for (const reminder of historyReminders) {
+    historyHost.appendChild(createReminderItem(reminder, false));
+  }
+
+  $("toggleReminderHistoryBtn").textContent = reminderHistoryVisible
+    ? `Скрыть историю (${historyReminders.length})`
+    : `Показать историю (${historyReminders.length})`;
+  $("reminderHistoryBlock").classList.toggle("hidden", !reminderHistoryVisible);
+}
+
+function createReminderItem(reminder, withActions) {
+  const item = document.createElement("div");
+  item.className = `item${withActions ? "" : " history-item"}`;
+  item.innerHTML = `
+    <div class="item-title">
+      <span>${escapeHtml(reminder.title)}</span>
+      <span class="pill muted">${translateStatus(reminder.status)}</span>
+    </div>
+    <div class="meta">Форма: ${reminder.form_id || "нет"} | очередь: ${translateEnqueue(reminder.enqueue_status)}</div>
+    <div class="meta">${withActions ? "Следующий показ" : "Дата"}: ${formatDate(reminder.next_run_at)}</div>
+    ${
+      withActions
+        ? `<div class="actions">
+            <button class="secondary" data-action="skip" data-id="${reminder.id}">Позже на 30 минут</button>
+            <button class="secondary" data-action="complete" data-id="${reminder.id}">Готово</button>
+            <button class="ghost" data-action="cancel" data-id="${reminder.id}">Отменить</button>
+          </div>`
+        : ""
+    }
+  `;
+  return item;
+}
+
+function isActiveReminder(reminder) {
+  return reminder.status === "pending";
+}
+
+function toggleReminderHistory() {
+  reminderHistoryVisible = !reminderHistoryVisible;
+  renderReminders();
 }
 
 async function createReminderNow() {
@@ -423,21 +503,69 @@ async function submitAnswer() {
   const formId = Number($("answerFormSelect").value);
   if (!formId) throw new Error("Сначала создай или выбери форму.");
   const totalMinutes = Number($("hoursInput").value || 0) * 60 + Number($("minutesInput").value || 0);
+  const mood = $("moodInput").value;
 
   const data = await request(`/forms/${formId}/answers`, {
     method: "POST",
     body: JSON.stringify({
       answers_data: {
         minutes: totalMinutes,
-        mood: $("moodInput").value,
+        mood,
       },
     }),
   });
 
   showOutput("answerOutput", data);
+  addAnswerHistoryItem(formId, totalMinutes, mood);
   setStep("stepAnswer", "done");
   log("Ответ сохранен", data);
   await loadReminders();
+}
+
+function addAnswerHistoryItem(formId, totalMinutes, mood) {
+  const form = forms.find((item) => item.form_id === formId);
+  answerHistory.unshift({
+    formId,
+    formTitle: form?.title || `Форма #${formId}`,
+    minutes: totalMinutes,
+    mood,
+    createdAt: new Date(),
+  });
+  answerHistoryVisible = true;
+  renderAnswerHistory();
+}
+
+function renderAnswerHistory() {
+  const host = $("answerHistoryList");
+  host.innerHTML = "";
+
+  if (!answerHistory.length) {
+    host.innerHTML = '<div class="result muted">Ответов пока нет. Сохрани активность, и она появится здесь.</div>';
+  }
+
+  for (const answer of answerHistory) {
+    const item = document.createElement("div");
+    item.className = "item answer-item";
+    item.innerHTML = `
+      <div class="item-title">
+        <span>${escapeHtml(answer.formTitle)}</span>
+        <span class="pill muted">${formatDuration(answer.minutes)}</span>
+      </div>
+      <div class="meta">Настроение: ${escapeHtml(translateMood(answer.mood))}</div>
+      <div class="meta">Сохранено: ${formatDate(answer.createdAt)}</div>
+    `;
+    host.appendChild(item);
+  }
+
+  $("toggleAnswerHistoryBtn").textContent = answerHistoryVisible
+    ? `Скрыть историю ответов (${answerHistory.length})`
+    : `Показать историю ответов (${answerHistory.length})`;
+  $("answerHistoryBlock").classList.toggle("hidden", !answerHistoryVisible);
+}
+
+function toggleAnswerHistory() {
+  answerHistoryVisible = !answerHistoryVisible;
+  renderAnswerHistory();
 }
 
 async function loadStats() {
@@ -510,6 +638,28 @@ function translateAction(action) {
   }[action] || action;
 }
 
+function translateMood(mood) {
+  return {
+    terrible: "ужасно",
+    bad: "плохо",
+    tired: "устал",
+    ok: "нормально",
+    calm: "спокойно",
+    good: "хорошо",
+    great: "отлично",
+    focused: "сфокусирован",
+    inspired: "вдохновлен",
+  }[mood] || mood;
+}
+
+function formatDuration(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours && minutes) return `${hours} ч ${minutes} мин`;
+  if (hours) return `${hours} ч`;
+  return `${minutes} мин`;
+}
+
 function bind(id, handler) {
   $(id).addEventListener("click", async (event) => {
     const button = event.currentTarget;
@@ -541,6 +691,14 @@ document.addEventListener("click", async (event) => {
       $("answerFormSelect").value = id;
       updateSelectedFormInfo();
       log("Форма выбрана", { form_id: Number(id) });
+      return;
+    }
+
+    if (action === "remove-schedule-time") {
+      syncScheduleTimesFromInputs();
+      scheduleTimes.splice(Number(target.dataset.index), 1);
+      if (!scheduleTimes.length) scheduleTimes = ["20:00"];
+      renderScheduleTimes();
       return;
     }
 
@@ -576,8 +734,13 @@ bind("createReminderBtn", createReminderNow);
 bind("submitAnswerBtn", submitAnswer);
 bind("statsBtn", loadStats);
 bind("logoutBtn", logout);
+bind("addScheduleTimeBtn", addScheduleTime);
+bind("toggleReminderHistoryBtn", toggleReminderHistory);
+bind("toggleAnswerHistoryBtn", toggleAnswerHistory);
 
 updateAuthStatus();
+renderScheduleTimes();
+renderAnswerHistory();
 checkHealth().catch(() => {});
 
 if (token) {

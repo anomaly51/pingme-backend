@@ -53,6 +53,12 @@ button.ghost {
   color: #5c6876;
 }
 
+button.small {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
 input,
 select {
   width: 100%;
@@ -76,6 +82,52 @@ label {
   color: #4f5b69;
   font-size: 13px;
   font-weight: 800;
+}
+
+.field-block {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.field-label {
+  color: #4f5b69;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.hint {
+  color: #7a8796;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.inline-help {
+  margin: -2px 0 12px;
+  padding: 9px 11px;
+  border: 1px solid #e2e7ee;
+  border-radius: 8px;
+  background: #fafbfd;
+  color: #637183;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.time-list {
+  display: grid;
+  gap: 8px;
+}
+
+.time-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 8px;
+  align-items: center;
+}
+
+.time-row.single {
+  grid-template-columns: 1fr;
 }
 
 h1,
@@ -232,6 +284,15 @@ h3 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.form-grid.builder-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.schedule-field {
+  grid-row: span 2;
+}
+
 .form-grid.inline {
   grid-template-columns: minmax(170px, 1fr) minmax(170px, 1fr) auto;
   align-items: end;
@@ -299,6 +360,16 @@ h3 {
   background: #fbfcfe;
 }
 
+.history-item {
+  background: #f7f9fc;
+  opacity: 0.9;
+}
+
+.answer-item {
+  border-color: #d7eadf;
+  background: #f7fcf9;
+}
+
 .item-title {
   display: flex;
   align-items: center;
@@ -361,6 +432,20 @@ h3 {
   font-size: 16px;
 }
 
+.history-toggle {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.history-block {
+  margin-top: 12px;
+}
+
+.hidden {
+  display: none;
+}
+
 .output,
 .log {
   width: 100%;
@@ -392,9 +477,14 @@ h3 {
 
   .top,
   .form-grid.two,
+  .form-grid.builder-grid,
   .form-grid.inline,
   .form-grid.answer-grid {
     grid-template-columns: 1fr;
+  }
+
+  .schedule-field {
+    grid-row: auto;
   }
 
   .status-board {
@@ -413,5 +503,9 @@ h3 {
 
   button {
     width: 100%;
+  }
+
+  .time-row {
+    grid-template-columns: 1fr;
   }
 }

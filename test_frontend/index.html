@@ -88,27 +88,34 @@
             <button id="refreshFormsBtn" class="secondary">Обновить</button>
           </div>
 
-          <div class="form-grid two">
+          <div class="form-grid builder-grid">
             <label>
               Название активности
               <input id="formTitleInput" value="Игра на гитаре" />
             </label>
-            <label>
-              Расписание
-              <input id="scheduleInput" value="daily 20:00" />
-            </label>
+            <div class="field-block schedule-field">
+              <div class="field-label">Напоминания по времени</div>
+              <span id="scheduleTimesHost" class="time-list"></span>
+              <button id="addScheduleTimeBtn" class="secondary small" type="button">Добавить напоминание</button>
+            </div>
             <label>
               Кнопка “позже”
               <select id="skipDelayInput">
-                <option value="1800">через 30 минут</option>
-                <option value="3600" selected>через 1 час</option>
-                <option value="86400">через 1 день</option>
+                <option value="900">через 15 минут</option>
+                <option value="1800" selected>через 30 минут</option>
+                <option value="2700">через 45 минут</option>
+                <option value="3600">через 1 час</option>
               </select>
+              <span class="hint">Это задержка после нажатия “позже” в напоминании.</span>
             </label>
             <label>
-              Максимум минут
-              <input id="maxMinutesInput" type="number" value="600" min="1" />
+              Лимит ответа: часы
+              <input id="maxHoursInput" type="number" value="10" min="0" />
             </label>
+          </div>
+
+          <div class="inline-help">
+            Лимит ответа - это максимум часов, который можно будет указать при заполнении активности.
           </div>
 
           <div class="actions">
@@ -169,8 +176,15 @@
 
           <div id="bannerHost" class="banner-host"></div>
 
-          <h3>Последние напоминания</h3>
+          <h3>Активные напоминания</h3>
           <div id="remindersList" class="list"></div>
+          <div class="history-toggle">
+            <button id="toggleReminderHistoryBtn" class="secondary" type="button">Показать историю</button>
+          </div>
+          <div id="reminderHistoryBlock" class="history-block hidden">
+            <h3>История напоминаний</h3>
+            <div id="reminderHistoryList" class="list"></div>
+          </div>
         </section>
 
         <section class="step" id="stepAnswer">
@@ -195,9 +209,15 @@
             <label>
               Настроение
               <select id="moodInput">
+                <option value="terrible">ужасно</option>
                 <option value="bad">плохо</option>
+                <option value="tired">устал</option>
                 <option value="ok">нормально</option>
+                <option value="calm">спокойно</option>
                 <option value="good" selected>хорошо</option>
+                <option value="great">отлично</option>
+                <option value="focused">сфокусирован</option>
+                <option value="inspired">вдохновлен</option>
               </select>
             </label>
             <div class="actions inside">
@@ -206,6 +226,13 @@
           </div>
 
           <pre id="answerOutput" class="output">Ответ формы или статистика появятся здесь.</pre>
+          <div class="history-toggle">
+            <button id="toggleAnswerHistoryBtn" class="secondary" type="button">Показать историю ответов</button>
+          </div>
+          <div id="answerHistoryBlock" class="history-block hidden">
+            <h3>История ответов</h3>
+            <div id="answerHistoryList" class="list"></div>
+          </div>
         </section>
 
         <section class="step" id="stepLog">
