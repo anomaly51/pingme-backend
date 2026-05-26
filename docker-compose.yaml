@@ -74,6 +74,8 @@ services:
     volumes:
       - .:/code
     command: python -m app.services.reminder_scheduler
+    healthcheck:
+      disable: true
     depends_on:
       db:
         condition: service_healthy
@@ -90,6 +92,8 @@ services:
     volumes:
       - .:/code
     command: python -m app.services.reminder_worker
+    healthcheck:
+      disable: true
     depends_on:
       db:
         condition: service_healthy
