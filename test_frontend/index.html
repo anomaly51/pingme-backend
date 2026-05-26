@@ -4,144 +4,224 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PingMe - тестовый интерфейс</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <h1>PingMe - тестовый интерфейс</h1>
-        <p>Проверь регистрацию, формы, напоминания и сценарий “спросить позже”.</p>
-      </div>
-      <div class="status">
-        <span id="apiStatus" class="pill muted">API не проверен</span>
-        <span id="socketStatus" class="pill muted">Realtime выключен</span>
-      </div>
-    </header>
-
-    <main class="layout">
-      <section class="panel auth-panel">
-        <div class="panel-head">
-          <h2>Аккаунт</h2>
-          <button id="logoutBtn" class="ghost">Выйти</button>
+    <div class="page">
+      <header class="top">
+        <div>
+          <p class="eyebrow">PingMe local</p>
+          <h1>Тестовый интерфейс</h1>
+          <p class="lead">Проверь backend, аккаунт, формы, напоминания, ответы и статистику.</p>
         </div>
-
-        <label>
-          Почта
-          <input id="emailInput" type="email" value="fesenko.kostya576@gmail.com" />
-        </label>
-        <label>
-          Пароль
-          <input id="passwordInput" type="password" value="Strongpassword123" />
-        </label>
-        <div class="row">
-          <button id="loginBtn">Войти</button>
-          <button id="registerBtn" class="secondary">Зарегистрироваться</button>
+        <div class="status-board" aria-label="Статусы подключения">
+          <span id="apiStatus" class="pill muted">API не проверен</span>
+          <span id="socketStatus" class="pill muted">Realtime выключен</span>
+          <span id="authStatus" class="pill muted">Нет входа</span>
         </div>
+      </header>
 
-        <div class="confirm-box">
-          <label>
-            Код из письма
-            <input id="codeInput" inputmode="numeric" placeholder="6 цифр" />
-          </label>
-          <div class="row">
-            <button id="requestCodeBtn" class="secondary">Отправить код</button>
-            <button id="confirmCodeBtn" class="secondary">Подтвердить</button>
+      <main class="scenario">
+        <section class="step" id="stepHealth">
+          <div class="card-head">
+            <div>
+              <span class="step-label">Шаг 1</span>
+              <h2>Проверить backend</h2>
+              <p>API, база и очередь должны быть живыми перед остальными проверками.</p>
+            </div>
+            <button id="healthBtn">Проверить</button>
           </div>
-        </div>
+          <div id="healthResult" class="result muted">Проверка еще не запускалась.</div>
+        </section>
 
-        <pre id="authOutput" class="output"></pre>
-      </section>
+        <section class="step" id="stepAuth">
+          <div class="card-head">
+            <div>
+              <span class="step-label">Шаг 2</span>
+              <h2>Войти в аккаунт</h2>
+              <p>Тестовый аккаунт уже подтвержден в локальной базе.</p>
+            </div>
+            <button id="logoutBtn" class="ghost">Выйти</button>
+          </div>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Формы активности</h2>
-          <button id="refreshFormsBtn" class="secondary">Обновить</button>
-        </div>
+          <div class="form-grid two">
+            <label>
+              Почта
+              <input id="emailInput" type="email" value="fesenko.kostya576@gmail.com" />
+            </label>
+            <label>
+              Пароль
+              <input id="passwordInput" type="password" value="Strongpassword123" />
+            </label>
+          </div>
 
-        <div class="form-grid">
-          <label>
-            Название активности
-            <input id="formTitleInput" value="Игра на гитаре" />
-          </label>
-          <label>
-            Когда спрашивать
-            <input id="scheduleInput" value="daily 20:00" />
-          </label>
-          <label>
-            Если нажал “позже”
-            <select id="skipDelayInput">
-              <option value="1800">через 30 минут</option>
-              <option value="3600" selected>через 1 час</option>
-              <option value="86400">через 1 день</option>
-            </select>
-          </label>
-          <label>
-            Максимум минут
-            <input id="maxMinutesInput" type="number" value="600" />
-          </label>
-        </div>
+          <div class="actions">
+            <button id="loginBtn">Войти</button>
+            <button id="registerBtn" class="secondary">Зарегистрировать</button>
+          </div>
 
-        <button id="createFormBtn">Создать форму</button>
-        <div id="formsList" class="list"></div>
-      </section>
+          <details class="extra">
+            <summary>Подтверждение почты для нового аккаунта</summary>
+            <div class="form-grid two">
+              <label>
+                Код из письма
+                <input id="codeInput" inputmode="numeric" placeholder="6 цифр" />
+              </label>
+              <div class="actions inside">
+                <button id="requestCodeBtn" class="secondary">Отправить код</button>
+                <button id="confirmCodeBtn" class="secondary">Подтвердить</button>
+              </div>
+            </div>
+          </details>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Напоминания</h2>
-          <button id="refreshRemindersBtn" class="secondary">Обновить</button>
-        </div>
+          <pre id="authOutput" class="output">Ответ авторизации появится здесь.</pre>
+        </section>
 
-        <div class="row">
-          <button id="createReminderBtn">Спросить сейчас</button>
-          <select id="manualDelayInput">
-            <option value="0">сразу</option>
-            <option value="60">через 1 минуту</option>
-            <option value="1800">через 30 минут</option>
-          </select>
-        </div>
+        <section class="step" id="stepForms">
+          <div class="card-head">
+            <div>
+              <span class="step-label">Шаг 3</span>
+              <h2>Создать или выбрать форму</h2>
+              <p>Форма описывает активность, которую потом спросит напоминание.</p>
+            </div>
+            <button id="refreshFormsBtn" class="secondary">Обновить</button>
+          </div>
 
-        <div id="bannerHost" class="banner-host"></div>
-        <div id="remindersList" class="list"></div>
-      </section>
+          <div class="form-grid two">
+            <label>
+              Название активности
+              <input id="formTitleInput" value="Игра на гитаре" />
+            </label>
+            <label>
+              Расписание
+              <input id="scheduleInput" value="daily 20:00" />
+            </label>
+            <label>
+              Кнопка “позже”
+              <select id="skipDelayInput">
+                <option value="1800">через 30 минут</option>
+                <option value="3600" selected>через 1 час</option>
+                <option value="86400">через 1 день</option>
+              </select>
+            </label>
+            <label>
+              Максимум минут
+              <input id="maxMinutesInput" type="number" value="600" min="1" />
+            </label>
+          </div>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Заполнить активность</h2>
-          <button id="statsBtn" class="secondary">Статистика</button>
-        </div>
+          <div class="actions">
+            <button id="createFormBtn">Создать форму</button>
+          </div>
 
-        <label>
-          Форма
-          <select id="answerFormSelect"></select>
-        </label>
-        <div class="form-grid">
-          <label>
-            Сколько минут
-            <input id="minutesInput" type="number" value="45" />
-          </label>
-          <label>
-            Настроение
-            <select id="moodInput">
-              <option value="bad">плохо</option>
-              <option value="ok">нормально</option>
-              <option value="good" selected>хорошо</option>
-            </select>
-          </label>
-        </div>
-        <button id="submitAnswerBtn">Сохранить ответ</button>
-        <pre id="answerOutput" class="output"></pre>
-      </section>
+          <div class="selection-box">
+            <h3>Выбранная форма</h3>
+            <label>
+              Использовать дальше
+              <select id="answerFormSelect"></select>
+            </label>
+            <div id="selectedFormInfo" class="result muted">Форма пока не выбрана.</div>
+          </div>
 
-      <section class="panel log-panel">
-        <div class="panel-head">
-          <h2>Технический лог</h2>
-          <button id="clearLogBtn" class="ghost">Очистить</button>
-        </div>
-        <pre id="logOutput" class="log"></pre>
-      </section>
-    </main>
+          <h3>Доступные формы</h3>
+          <div id="formsList" class="list"></div>
+        </section>
 
-    <script src="./app.js"></script>
+        <section class="step" id="stepReminder">
+          <div class="card-head">
+            <div>
+              <span class="step-label">Шаг 4</span>
+              <h2>Вызвать напоминание</h2>
+              <p>Проверь создание, очередь, realtime-баннер и действия с напоминанием.</p>
+            </div>
+            <button id="refreshRemindersBtn" class="secondary">Обновить</button>
+          </div>
+
+          <div class="selection-box">
+            <h3>Для какой активности напомнить</h3>
+            <label>
+              Форма
+              <select id="reminderFormSelect"></select>
+            </label>
+            <div id="reminderTargetInfo" class="result muted">Сначала выбери или создай форму в шаге 3.</div>
+          </div>
+
+          <div class="form-grid inline">
+            <label>
+              Когда показать
+              <select id="manualDelayInput">
+                <option value="0">сразу</option>
+                <option value="60">через 1 минуту</option>
+                <option value="300">через 5 минут</option>
+                <option value="900">через 15 минут</option>
+                <option value="1800">через 30 минут</option>
+                <option value="2700">через 45 минут</option>
+                <option value="3600">через 1 час</option>
+                <option value="7200">через 2 часа</option>
+                <option value="86400">завтра</option>
+              </select>
+            </label>
+            <div class="actions inside">
+              <button id="createReminderBtn">Спросить сейчас</button>
+            </div>
+          </div>
+
+          <div id="bannerHost" class="banner-host"></div>
+
+          <h3>Последние напоминания</h3>
+          <div id="remindersList" class="list"></div>
+        </section>
+
+        <section class="step" id="stepAnswer">
+          <div class="card-head">
+            <div>
+              <span class="step-label">Шаг 5</span>
+              <h2>Заполнить активность</h2>
+              <p>Сохрани ответ и проверь статистику по выбранной форме.</p>
+            </div>
+            <button id="statsBtn" class="secondary">Статистика</button>
+          </div>
+
+          <div class="form-grid answer-grid">
+            <label>
+              Часы
+              <input id="hoursInput" type="number" value="0" min="0" />
+            </label>
+            <label>
+              Минуты
+              <input id="minutesInput" type="number" value="45" min="0" max="59" />
+            </label>
+            <label>
+              Настроение
+              <select id="moodInput">
+                <option value="bad">плохо</option>
+                <option value="ok">нормально</option>
+                <option value="good" selected>хорошо</option>
+              </select>
+            </label>
+            <div class="actions inside">
+              <button id="submitAnswerBtn">Сохранить</button>
+            </div>
+          </div>
+
+          <pre id="answerOutput" class="output">Ответ формы или статистика появятся здесь.</pre>
+        </section>
+
+        <section class="step" id="stepLog">
+          <div class="card-head">
+            <div>
+              <span class="step-label">Шаг 6</span>
+              <h2>Технический лог</h2>
+              <p>Здесь видно, какие запросы уходили и что вернул backend.</p>
+            </div>
+            <button id="clearLogBtn" class="ghost">Очистить</button>
+          </div>
+          <pre id="logOutput" class="log"></pre>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js?v=4"></script>
   </body>
 </html>

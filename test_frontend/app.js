@@ -9,12 +9,57 @@ const $ = (id) => document.getElementById(id);
 
 function log(message, data) {
   const line = `[${new Date().toLocaleTimeString()}] ${message}`;
-  $("logOutput").textContent =
-    `${line}${data ? `\n${JSON.stringify(data, null, 2)}` : ""}\n\n${$("logOutput").textContent}`;
+  const payload = data ? `\n${JSON.stringify(maskSensitive(data), null, 2)}` : "";
+  $("logOutput").textContent = `${line}${payload}\n\n${$("logOutput").textContent}`;
 }
 
 function showOutput(id, data) {
-  $(id).textContent = JSON.stringify(data, null, 2);
+  $(id).textContent = JSON.stringify(maskSensitive(data), null, 2);
+}
+
+function maskSensitive(value) {
+  if (Array.isArray(value)) return value.map(maskSensitive);
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      if (["access_token", "refresh_token", "token"].includes(key)) {
+        return [key, maskToken(item)];
+      }
+      return [key, maskSensitive(item)];
+    }),
+  );
+}
+
+function maskToken(value) {
+  if (typeof value !== "string") return value;
+  if (value.length <= 16) return "***";
+  return `${value.slice(0, 10)}...${value.slice(-6)}`;
+}
+
+function setPill(id, text, state = "") {
+  $(id).textContent = text;
+  $(id).className = `pill${state ? ` ${state}` : ""}`;
+}
+
+function setStep(id, state) {
+  $(id).classList.remove("done", "error");
+  if (state) $(id).classList.add(state);
+}
+
+function setResult(id, text, state = "muted") {
+  $(id).textContent = text;
+  $(id).className = `result ${state}`.trim();
+}
+
+function updateAuthStatus() {
+  if (token) {
+    setPill("authStatus", "Вход выполнен");
+    setStep("stepAuth", "done");
+    return;
+  }
+  setPill("authStatus", "Нет входа", "muted");
+  setStep("stepAuth", "");
 }
 
 async function request(path, options = {}) {
@@ -27,21 +72,41 @@ async function request(path, options = {}) {
     headers,
   });
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
+  let payload = {};
+
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { raw: text };
+    }
+  }
+
   if (!response.ok) {
     throw { status: response.status, payload };
   }
+
   return payload;
 }
 
 async function checkHealth() {
   try {
     const data = await request("/health/ready");
-    $("apiStatus").textContent = data.status === "ok" ? "API работает" : "API частично работает";
-    $("apiStatus").className = data.status === "ok" ? "pill" : "pill bad";
+    const dbOk = data.checks?.database === true;
+    const rabbitOk = data.checks?.rabbitmq === true;
+    const text = `API: ${data.status}. База: ${dbOk ? "работает" : "ошибка"}. RabbitMQ: ${rabbitOk ? "работает" : "ошибка"}.`;
+
+    setPill("apiStatus", data.status === "ok" ? "API работает" : "API частично работает", data.status === "ok" ? "" : "warn");
+    setResult("healthResult", text, data.status === "ok" ? "" : "bad");
+    setStep("stepHealth", data.status === "ok" ? "done" : "error");
+    log("Проверка backend", data);
+    return data;
   } catch (error) {
-    $("apiStatus").textContent = "API недоступен";
-    $("apiStatus").className = "pill bad";
+    setPill("apiStatus", "API недоступен", "bad");
+    setResult("healthResult", formatError(error), "bad");
+    setStep("stepHealth", "error");
+    log("Backend недоступен", error.payload || { message: error.message });
+    throw error;
   }
 }
 
@@ -54,24 +119,21 @@ function connectSocket() {
   });
 
   socket.on("connect", () => {
-    $("socketStatus").textContent = "Realtime подключен";
-    $("socketStatus").className = "pill";
+    setPill("socketStatus", "Realtime подключен");
     log("Realtime подключен");
   });
 
   socket.on("disconnect", () => {
-    $("socketStatus").textContent = "Realtime выключен";
-    $("socketStatus").className = "pill muted";
+    setPill("socketStatus", "Realtime выключен", "muted");
   });
 
   socket.on("connect_error", (error) => {
-    $("socketStatus").textContent = "Ошибка realtime";
-    $("socketStatus").className = "pill bad";
+    setPill("socketStatus", "Ошибка realtime", "bad");
     log("Ошибка realtime", { message: error.message });
   });
 
   socket.on("reminder.due", (reminder) => {
-    log("reminder.due", reminder);
+    log("Realtime: пришло напоминание", reminder);
     renderBanner(reminder);
     loadReminders();
   });
@@ -79,7 +141,7 @@ function connectSocket() {
 
 async function login() {
   const body = new URLSearchParams({
-    username: $("emailInput").value,
+    username: $("emailInput").value.trim(),
     password: $("passwordInput").value,
   });
   const data = await request("/auth/login", {
@@ -87,11 +149,13 @@ async function login() {
     body,
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
+
   token = data.access_token;
   localStorage.setItem("pingme_token", token);
   showOutput("authOutput", data);
-    log("Вход выполнен");
+  updateAuthStatus();
   connectSocket();
+  log("Вход выполнен");
   await Promise.all([loadForms(), loadReminders()]);
 }
 
@@ -99,47 +163,49 @@ async function register() {
   const data = await request("/auth/register", {
     method: "POST",
     body: JSON.stringify({
-      email: $("emailInput").value,
+      email: $("emailInput").value.trim(),
       password: $("passwordInput").value,
     }),
   });
   showOutput("authOutput", data);
-  log("Аккаунт создан. Проверь почту и введи код.", data);
+  log("Аккаунт создан. Теперь нужно подтвердить почту.", data);
 }
 
 async function requestCode() {
   const data = await request("/auth/verify-email/request", {
     method: "POST",
-    body: JSON.stringify({ email: $("emailInput").value }),
+    body: JSON.stringify({ email: $("emailInput").value.trim() }),
   });
   showOutput("authOutput", data);
-  log("Код подтверждения отправлен");
+  log("Код подтверждения отправлен", data);
 }
 
 async function confirmCode() {
   const data = await request("/auth/verify-email/confirm", {
     method: "POST",
     body: JSON.stringify({
-      email: $("emailInput").value,
+      email: $("emailInput").value.trim(),
       code: $("codeInput").value.trim(),
     }),
   });
   showOutput("authOutput", data);
-  log("Почта подтверждена");
+  log("Почта подтверждена", data);
 }
 
 async function loadForms() {
   forms = await request("/forms");
   renderForms();
   renderFormOptions();
+  setStep("stepForms", forms.length ? "done" : "");
   log("Формы загружены", { count: forms.length });
 }
 
 function renderForms() {
   const host = $("formsList");
   host.innerHTML = "";
+
   if (!forms.length) {
-    host.innerHTML = '<div class="meta">Форм пока нет. Создай форму активности.</div>';
+    host.innerHTML = '<div class="result muted">Форм пока нет. Создай первую форму активности.</div>';
     return;
   }
 
@@ -151,77 +217,132 @@ function renderForms() {
         <span>${escapeHtml(form.title)}</span>
         <span class="pill muted">#${form.form_id}</span>
       </div>
-      <div class="meta">${escapeHtml(form.description || "")}</div>
+      <div class="meta">${escapeHtml(form.description || "Без описания")}</div>
       <div class="meta">Расписание: ${escapeHtml((form.schedule_crons || []).join(", ") || "не задано")}</div>
       <div class="meta">Напоминания: ${form.reminder_enabled ? "включены" : "выключены"}</div>
+      <div class="actions">
+        <button class="secondary" data-action="select-form" data-id="${form.form_id}">Использовать эту форму</button>
+      </div>
     `;
     host.appendChild(item);
   }
 }
 
 function renderFormOptions() {
-  const select = $("answerFormSelect");
-  select.innerHTML = "";
-  for (const form of forms) {
-    const option = document.createElement("option");
-    option.value = form.form_id;
-    option.textContent = `${form.form_id}: ${form.title}`;
-    select.appendChild(option);
+  const selects = [$("answerFormSelect"), $("reminderFormSelect")];
+  const previousValue = $("answerFormSelect").value || $("reminderFormSelect").value;
+
+  for (const select of selects) {
+    select.innerHTML = "";
+
+    for (const form of forms) {
+      const option = document.createElement("option");
+      option.value = form.form_id;
+      option.textContent = `#${form.form_id} - ${form.title}`;
+      select.appendChild(option);
+    }
+
+    if (previousValue && forms.some((form) => String(form.form_id) === previousValue)) {
+      select.value = previousValue;
+    }
   }
+
+  updateSelectedFormInfo();
+}
+
+function updateSelectedFormInfo() {
+  const formId = Number($("answerFormSelect").value);
+  const form = forms.find((item) => item.form_id === formId);
+
+  if (!form) {
+    setResult("selectedFormInfo", "Форма пока не выбрана.", "muted");
+    setResult("reminderTargetInfo", "Сначала выбери или создай форму в шаге 3.", "muted");
+    return;
+  }
+
+  $("reminderFormSelect").value = String(form.form_id);
+  setResult(
+    "selectedFormInfo",
+    `Дальше тестируем форму #${form.form_id}: ${form.title}. Расписание: ${(form.schedule_crons || []).join(", ") || "не задано"}.`,
+  );
+  setResult(
+    "reminderTargetInfo",
+    `Напоминание будет создано для формы #${form.form_id}: ${form.title}.`,
+  );
+}
+
+function updateReminderFormSelection() {
+  const formId = Number($("reminderFormSelect").value);
+  const form = forms.find((item) => item.form_id === formId);
+
+  if (!form) {
+    setResult("reminderTargetInfo", "Сначала выбери или создай форму в шаге 3.", "muted");
+    return;
+  }
+
+  $("answerFormSelect").value = String(form.form_id);
+  updateSelectedFormInfo();
 }
 
 async function createForm() {
   const title = $("formTitleInput").value.trim();
   const skipDelay = Number($("skipDelayInput").value);
   const maxMinutes = Number($("maxMinutesInput").value);
-  const payload = {
-    title,
-    description: "Created from the local test console",
-    form_structure: {
-      fields: [
-        {
-          name: "minutes",
-          label: "Сколько минут занимался",
-          type: "number",
-          required: true,
-          min: 0,
-          max: maxMinutes,
-        },
-        {
-          name: "mood",
-          label: "Настроение",
-          type: "select",
-          options: ["bad", "ok", "good"],
-        },
-      ],
-    },
-    schedule_crons: [$("scheduleInput").value.trim()],
-    is_active: true,
-    reminder_enabled: true,
-    reminder_title: `Сколько времени: ${title.toLowerCase()}?`,
-    reminder_payload: { activity: title },
-    skip_retry_delay_seconds: skipDelay,
-    delivery_retry_delay_seconds: skipDelay,
-  };
+
+  if (!title) throw new Error("Введите название активности.");
+
   const data = await request("/forms", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      title,
+      description: "Создано из локального тестового сценария",
+      form_structure: {
+        fields: [
+          {
+            name: "minutes",
+            label: "Сколько минут занимался",
+            type: "number",
+            required: true,
+            min: 0,
+            max: maxMinutes,
+          },
+          {
+            name: "mood",
+            label: "Настроение",
+            type: "select",
+            options: ["bad", "ok", "good"],
+          },
+        ],
+      },
+      schedule_crons: [$("scheduleInput").value.trim()],
+      is_active: true,
+      reminder_enabled: true,
+      reminder_title: `Сколько времени: ${title.toLowerCase()}?`,
+      reminder_payload: { activity: title },
+      skip_retry_delay_seconds: skipDelay,
+      delivery_retry_delay_seconds: skipDelay,
+    }),
   });
+
   log("Форма создана", data);
   await loadForms();
+  $("answerFormSelect").value = data.form_id;
+  updateSelectedFormInfo();
 }
 
 async function loadReminders() {
   reminders = await request("/reminders?limit=20");
   renderReminders();
+  if (reminders.length) setStep("stepReminder", "done");
   log("Напоминания загружены", { count: reminders.length });
 }
 
 function renderReminders() {
   const host = $("remindersList");
   host.innerHTML = "";
+
   if (!reminders.length) {
-    host.innerHTML = '<div class="meta">Напоминаний пока нет.</div>';
+    host.innerHTML = '<div class="result muted">Напоминаний пока нет. Нажми “Спросить сейчас”.</div>';
     return;
   }
 
@@ -234,8 +355,8 @@ function renderReminders() {
         <span class="pill muted">${translateStatus(reminder.status)}</span>
       </div>
       <div class="meta">Форма: ${reminder.form_id || "нет"} | очередь: ${translateEnqueue(reminder.enqueue_status)}</div>
-      <div class="meta">Следующий показ: ${new Date(reminder.next_run_at).toLocaleString()}</div>
-      <div class="row">
+      <div class="meta">Следующий показ: ${formatDate(reminder.next_run_at)}</div>
+      <div class="actions">
         <button class="secondary" data-action="skip" data-id="${reminder.id}">Позже на 30 минут</button>
         <button class="secondary" data-action="complete" data-id="${reminder.id}">Готово</button>
         <button class="ghost" data-action="cancel" data-id="${reminder.id}">Отменить</button>
@@ -246,33 +367,38 @@ function renderReminders() {
 }
 
 async function createReminderNow() {
-  const formId = Number($("answerFormSelect").value || forms[0]?.form_id);
-  if (!formId) throw new Error("Сначала создай форму.");
+  const formId = Number($("reminderFormSelect").value || $("answerFormSelect").value || forms[0]?.form_id);
+  if (!formId) throw new Error("Сначала создай или выбери форму.");
+
+  const form = forms.find((item) => item.form_id === formId);
   const data = await request("/reminders", {
     method: "POST",
     body: JSON.stringify({
-      title: "Сколько времени ты играл на гитаре?",
+      title: form?.reminder_title || "Пора заполнить активность",
       form_id: formId,
-      payload: { source: "test_frontend" },
+      payload: { source: "test_frontend", activity: form?.title },
       retry_delay_seconds: Number($("skipDelayInput").value),
       due_in_seconds: Number($("manualDelayInput").value),
     }),
   });
+
   log("Напоминание создано", data);
   renderBanner(data);
+  setStep("stepReminder", "done");
   await loadReminders();
 }
 
 function renderBanner(reminder) {
   const host = $("bannerHost");
   host.innerHTML = "";
+
   const banner = document.createElement("div");
   banner.className = "banner";
   banner.innerHTML = `
     <strong>${escapeHtml(reminder.title)}</strong>
-    <div class="meta">Напоминание #${reminder.id}. Можно заполнить сейчас или попросить позже.</div>
-    <div class="row">
-      <button data-action="fill" data-id="${reminder.id}" data-form="${reminder.form_id || ""}">Заполнить</button>
+    <div class="meta">Напоминание #${reminder.id}. Проверь кнопки ниже или заполни форму на следующем шаге.</div>
+    <div class="actions">
+      <button data-action="fill" data-id="${reminder.id}" data-form="${reminder.form_id || ""}">Перейти к ответу</button>
       <button class="secondary" data-action="skip" data-id="${reminder.id}">Спросить через 30 минут</button>
       <button class="secondary" data-action="complete" data-id="${reminder.id}">Готово</button>
       <button class="ghost" data-action="cancel" data-id="${reminder.id}">Отменить</button>
@@ -282,12 +408,12 @@ function renderBanner(reminder) {
 }
 
 async function reminderAction(action, id) {
-  let path = `/reminders/${id}/${action}`;
   const options = { method: "POST" };
   if (action === "skip") {
     options.body = JSON.stringify({ retry_delay_seconds: 1800 });
   }
-  const data = await request(path, options);
+
+  const data = await request(`/reminders/${id}/${action}`, options);
   log(`Действие с напоминанием: ${translateAction(action)}`, data);
   $("bannerHost").innerHTML = "";
   await loadReminders();
@@ -295,26 +421,32 @@ async function reminderAction(action, id) {
 
 async function submitAnswer() {
   const formId = Number($("answerFormSelect").value);
-  if (!formId) throw new Error("Сначала создай форму.");
+  if (!formId) throw new Error("Сначала создай или выбери форму.");
+  const totalMinutes = Number($("hoursInput").value || 0) * 60 + Number($("minutesInput").value || 0);
+
   const data = await request(`/forms/${formId}/answers`, {
     method: "POST",
     body: JSON.stringify({
       answers_data: {
-        minutes: Number($("minutesInput").value),
+        minutes: totalMinutes,
         mood: $("moodInput").value,
       },
     }),
   });
+
   showOutput("answerOutput", data);
-  log("Ответ сохранён", data);
+  setStep("stepAnswer", "done");
+  log("Ответ сохранен", data);
   await loadReminders();
 }
 
 async function loadStats() {
   const formId = Number($("answerFormSelect").value);
-  if (!formId) throw new Error("Сначала создай форму.");
+  if (!formId) throw new Error("Сначала создай или выбери форму.");
+
   const data = await request(`/forms/${formId}/answers/stats`);
   showOutput("answerOutput", data);
+  setStep("stepAnswer", "done");
   log("Статистика загружена", data);
 }
 
@@ -322,8 +454,9 @@ function logout() {
   token = "";
   localStorage.removeItem("pingme_token");
   if (socket) socket.disconnect();
-  $("socketStatus").textContent = "Realtime выключен";
-  $("socketStatus").className = "pill muted";
+  setPill("socketStatus", "Realtime выключен", "muted");
+  $("authOutput").textContent = "Вы вышли из аккаунта.";
+  updateAuthStatus();
   log("Выход выполнен");
 }
 
@@ -337,6 +470,19 @@ function escapeHtml(value) {
       "'": "&#039;",
     }[char];
   });
+}
+
+function formatDate(value) {
+  if (!value) return "не задан";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("ru-RU");
+}
+
+function formatError(error) {
+  if (error?.payload?.detail) return `Ошибка ${error.status}: ${JSON.stringify(error.payload.detail)}`;
+  if (error?.payload) return `Ошибка ${error.status || ""}: ${JSON.stringify(error.payload)}`;
+  return error?.message || String(error);
 }
 
 function translateStatus(status) {
@@ -353,7 +499,7 @@ function translateEnqueue(status) {
     pending: "ожидает",
     queued: "в очереди",
     failed: "ошибка",
-  }[status] || status;
+  }[status] || status || "нет";
 }
 
 function translateAction(action) {
@@ -365,12 +511,20 @@ function translateAction(action) {
 }
 
 function bind(id, handler) {
-  $(id).addEventListener("click", async () => {
+  $(id).addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+
     try {
       await handler();
     } catch (error) {
-      const payload = error.payload || { message: error.message || String(error) };
-      log("Ошибка", payload);
+      const message = formatError(error);
+      log("Ошибка", error.payload || { message });
+      if (id.includes("health")) {
+        setResult("healthResult", message, "bad");
+      }
+    } finally {
+      button.disabled = false;
     }
   });
 }
@@ -378,20 +532,39 @@ function bind(id, handler) {
 document.addEventListener("click", async (event) => {
   const target = event.target.closest("[data-action]");
   if (!target) return;
+
   const action = target.dataset.action;
   const id = target.dataset.id;
+
   try {
-    if (action === "fill") {
-      if (target.dataset.form) $("answerFormSelect").value = target.dataset.form;
-      $("minutesInput").focus();
+    if (action === "select-form") {
+      $("answerFormSelect").value = id;
+      updateSelectedFormInfo();
+      log("Форма выбрана", { form_id: Number(id) });
       return;
     }
+
+    if (action === "fill") {
+      if (target.dataset.form) $("answerFormSelect").value = target.dataset.form;
+      updateSelectedFormInfo();
+      $("stepAnswer").scrollIntoView({ behavior: "smooth", block: "start" });
+      $("hoursInput").focus();
+      return;
+    }
+
     await reminderAction(action, id);
   } catch (error) {
-    log("Ошибка", error.payload || { message: error.message || String(error) });
+    log("Ошибка", error.payload || { message: formatError(error) });
   }
 });
 
+$("answerFormSelect").addEventListener("change", updateSelectedFormInfo);
+$("reminderFormSelect").addEventListener("change", updateReminderFormSelection);
+$("clearLogBtn").addEventListener("click", () => {
+  $("logOutput").textContent = "";
+});
+
+bind("healthBtn", checkHealth);
 bind("loginBtn", login);
 bind("registerBtn", register);
 bind("requestCodeBtn", requestCode);
@@ -403,12 +576,11 @@ bind("createReminderBtn", createReminderNow);
 bind("submitAnswerBtn", submitAnswer);
 bind("statsBtn", loadStats);
 bind("logoutBtn", logout);
-$("clearLogBtn").addEventListener("click", () => {
-  $("logOutput").textContent = "";
-});
 
-checkHealth();
+updateAuthStatus();
+checkHealth().catch(() => {});
+
 if (token) {
   connectSocket();
-  Promise.allSettled([loadForms(), loadReminders()]);
+  Promise.allSettled([loadForms(), loadReminders()]).then(() => updateAuthStatus());
 }
