@@ -1,7 +1,10 @@
 from datetime import date
+from types import SimpleNamespace
 
+from app.services import study_tracking
 from app.services.tracking_service import (
     ParticipantTarget,
+    TrackingService,
     build_find_offer_month_rows,
     first_find_offer_month_date,
     is_penultimate_day_of_month,
@@ -118,3 +121,70 @@ def test_next_find_offer_append_row_skips_empty_month_status_block_tail():
     values = ["Mon, May 25", "Week status ➜", "", "Month status ➜"]
 
     assert next_find_offer_append_row(values) == 12
+
+
+def test_study_tracking_row_lookup_returns_none_when_date_is_missing():
+    class Sheet:
+        def find(self, _query):
+            return None
+
+    assert study_tracking.get_row_index(Sheet()) is None
+
+
+async def test_update_study_data_runs_sheet_update(monkeypatch):
+    updates: list[tuple[int, int, str]] = []
+
+    class Cell:
+        row = 12
+
+    class Sheet:
+        def find(self, _query):
+            return Cell()
+
+        def update_cell(self, row: int, col: int, value: str) -> None:
+            updates.append((row, col, value))
+
+    monkeypatch.setattr(study_tracking, "get_sheet", lambda: Sheet())
+
+    row = await study_tracking.update_study_data(
+        "fesenko.kostya576@gmail.com",
+        "Read docs",
+        1.5,
+    )
+
+    assert row == 12
+    assert updates == [(12, 10, "Read docs"), (12, 11, "1.5")]
+
+
+async def test_tracking_notifications_use_socket_user_room(monkeypatch):
+    emitted: list[tuple[str, dict, str]] = []
+
+    class Scalars:
+        def all(self):
+            return [7, 8]
+
+    class Result:
+        def scalars(self):
+            return Scalars()
+
+    class Db:
+        async def execute(self, _query):
+            return Result()
+
+    async def fake_update_study_data(**_kwargs):
+        return 42
+
+    async def fake_emit(event, payload, room):
+        emitted.append((event, payload, room))
+
+    monkeypatch.setattr("app.services.tracking_service.update_study_data", fake_update_study_data)
+    monkeypatch.setattr("app.services.tracking_service.sio.emit", fake_emit)
+
+    user = SimpleNamespace(id=1, email="fesenko.kostya576@gmail.com")
+    data = SimpleNamespace(activity="Read docs", hours_spent=1.5)
+
+    response = await TrackingService(Db()).add_study_tracking(data, user)
+
+    assert response == {"message": "Data added to Google Sheet"}
+    assert [room for _, _, room in emitted] == ["user_7", "user_8"]
+    assert all(event == "study_record.created" for event, _, _ in emitted)

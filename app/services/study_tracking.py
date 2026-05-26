@@ -1,8 +1,10 @@
+import asyncio
 import datetime
+import logging
+import os
 
 import gspread
 from fastapi import HTTPException
-from uvicorn import logging
 
 
 USER_EMAILS_MAPPING = {
@@ -35,26 +37,27 @@ VERIFICATION_MATRIX = {
         "Vlad": 28,
     },
 }
+logger = logging.getLogger(__name__)
 
 
 def get_sheet():
     try:
-        gc = gspread.service_account(filename="google_services.json")
+        gc = gspread.service_account(
+            filename=os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "google_services.json")
+        )
         return gc.open("Find offer").sheet1
     except Exception as e:
-        logging.error(f"Google Auth Error: {e}")
+        logger.exception("Google Auth Error")
         raise HTTPException(status_code=500, detail="Google connection error") from e
 
 
 def get_row_index(sheet):
     today = datetime.datetime.now().strftime("%a, %b %-d")
-    try:
-        return sheet.find(today).row
-    except gspread.CellNotFound:
-        return None
+    cell = sheet.find(today)
+    return cell.row if cell else None
 
 
-async def update_study_data(email: str, activity: str, hours: float):
+def _update_study_data_sync(email: str, activity: str, hours: float):
     if email not in USER_EMAILS_MAPPING:
         raise HTTPException(status_code=403, detail="Your email is not linked to the table.")
 
@@ -73,7 +76,11 @@ async def update_study_data(email: str, activity: str, hours: float):
         raise HTTPException(status_code=500, detail=f"Recording error: {str(e)}") from e
 
 
-async def confirm_study_data(student_name: str, manager_name: str):
+async def update_study_data(email: str, activity: str, hours: float):
+    return await asyncio.to_thread(_update_study_data_sync, email, activity, hours)
+
+
+def _confirm_study_data_sync(student_name: str, manager_name: str):
     if student_name not in VERIFICATION_MATRIX:
         raise HTTPException(status_code=400, detail=f"Student {student_name} not found in matrix.")
 
@@ -97,3 +104,7 @@ async def confirm_study_data(student_name: str, manager_name: str):
         return True
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google Sheets error: {str(e)}") from e
+
+
+async def confirm_study_data(student_name: str, manager_name: str):
+    return await asyncio.to_thread(_confirm_study_data_sync, student_name, manager_name)

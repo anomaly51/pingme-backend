@@ -1,12 +1,14 @@
 import asyncio
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import socketio
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.endpoints import admin, answers, auth, forms, reminders, study_tracking_router
-from app.core.config import cors_origins, validate_production_config
+from app.core.config import cors_allow_credentials, cors_origins, validate_production_config
 from app.services.auth_service import run_auth_cleanup_scheduler
 from app.services.health_service import check_database, check_rabbitmq
 from app.services.reminder_service import run_reminder_scheduler
@@ -16,21 +18,55 @@ from .sockets import sio
 
 
 validate_production_config()
-
-fastapi_app = FastAPI(
-    title="ping me Project API",
-    description="FastAPI with PostgreSQL database.",
-    version="0.1.0",
-)
 auth_cleanup_scheduler_task: asyncio.Task | None = None
 find_offer_scheduler_task: asyncio.Task | None = None
 reminder_scheduler_task: asyncio.Task | None = None
 
 
+async def cancel_task(task: asyncio.Task | None) -> None:
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    global auth_cleanup_scheduler_task, find_offer_scheduler_task, reminder_scheduler_task
+
+    auth_cleanup_scheduler_task = asyncio.create_task(run_auth_cleanup_scheduler())
+    if os.getenv("REMINDER_SCHEDULER_ENABLED", "true").lower() not in {"1", "true", "yes"}:
+        reminder_scheduler_task = None
+    else:
+        reminder_scheduler_task = asyncio.create_task(run_reminder_scheduler())
+    if os.getenv("FIND_OFFER_AUTO_EXTEND", "").lower() not in {"1", "true", "yes"}:
+        find_offer_scheduler_task = None
+    else:
+        find_offer_scheduler_task = asyncio.create_task(run_find_offer_monthly_scheduler())
+
+    try:
+        yield
+    finally:
+        await cancel_task(auth_cleanup_scheduler_task)
+        await cancel_task(reminder_scheduler_task)
+        await cancel_task(find_offer_scheduler_task)
+
+
+fastapi_app = FastAPI(
+    title="ping me Project API",
+    description="FastAPI with PostgreSQL database.",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+
 fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins(),
-    allow_credentials=True,
+    allow_credentials=cors_allow_credentials(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -55,76 +91,19 @@ async def health_live():
 
 
 @fastapi_app.get("/health/ready", tags=["System Checks"])
-async def health_ready():
+async def health_ready(response: Response):
     checks = {
         "database": await check_database(),
         "rabbitmq": await check_rabbitmq(),
     }
+    is_ready = all(checks.values())
+    if not is_ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {
-        "status": "ok" if all(checks.values()) else "degraded",
+        "status": "ok" if is_ready else "degraded",
         "checks": checks,
         "version": os.getenv("APP_VERSION", ""),
     }
-
-
-@fastapi_app.on_event("startup")
-async def start_auth_cleanup_scheduler():
-    global auth_cleanup_scheduler_task
-    auth_cleanup_scheduler_task = asyncio.create_task(run_auth_cleanup_scheduler())
-
-
-@fastapi_app.on_event("shutdown")
-async def stop_auth_cleanup_scheduler():
-    if auth_cleanup_scheduler_task is None:
-        return
-
-    auth_cleanup_scheduler_task.cancel()
-    try:
-        await auth_cleanup_scheduler_task
-    except asyncio.CancelledError:
-        pass
-
-
-@fastapi_app.on_event("startup")
-async def start_reminder_scheduler():
-    global reminder_scheduler_task
-    if os.getenv("REMINDER_SCHEDULER_ENABLED", "true").lower() not in {"1", "true", "yes"}:
-        return
-
-    reminder_scheduler_task = asyncio.create_task(run_reminder_scheduler())
-
-
-@fastapi_app.on_event("shutdown")
-async def stop_reminder_scheduler():
-    if reminder_scheduler_task is None:
-        return
-
-    reminder_scheduler_task.cancel()
-    try:
-        await reminder_scheduler_task
-    except asyncio.CancelledError:
-        pass
-
-
-@fastapi_app.on_event("startup")
-async def start_find_offer_scheduler():
-    global find_offer_scheduler_task
-    if os.getenv("FIND_OFFER_AUTO_EXTEND", "").lower() not in {"1", "true", "yes"}:
-        return
-
-    find_offer_scheduler_task = asyncio.create_task(run_find_offer_monthly_scheduler())
-
-
-@fastapi_app.on_event("shutdown")
-async def stop_find_offer_scheduler():
-    if find_offer_scheduler_task is None:
-        return
-
-    find_offer_scheduler_task.cancel()
-    try:
-        await find_offer_scheduler_task
-    except asyncio.CancelledError:
-        pass
 
 
 fastapi_app.include_router(auth.router)

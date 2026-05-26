@@ -81,6 +81,26 @@ async def test_skip_reminder_reschedules_it(async_client, disable_rabbitmq_publi
 
 
 @pytest.mark.asyncio
+async def test_skip_reminder_accepts_empty_body(async_client, disable_rabbitmq_publish):
+    session = await reg_and_login(async_client)
+    created = await async_client.post(
+        "/reminders",
+        json={"title": "Track guitar", "retry_delay_seconds": 3600},
+        headers=session["headers"],
+    )
+    reminder_id = created.json()["id"]
+
+    skipped = await async_client.post(
+        f"/reminders/{reminder_id}/skip",
+        headers=session["headers"],
+    )
+
+    assert skipped.status_code == 200
+    assert skipped.json()["status"] == "skipped"
+    assert skipped.json()["retry_delay_seconds"] == 3600
+
+
+@pytest.mark.asyncio
 async def test_complete_reminder_removes_it_from_current(async_client):
     session = await reg_and_login(async_client)
     created = await async_client.post(

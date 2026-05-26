@@ -550,6 +550,19 @@ async def test_logout_invalid_refresh_token_still_blocks_access(async_client):
 
 
 @pytest.mark.asyncio
+async def test_logout_uses_refresh_cookie_without_request_body(async_client):
+    session = await reg_and_login(async_client)
+    response = await async_client.post("/auth/logout", headers=session["headers"])
+
+    assert response.status_code == 200
+    refresh = await async_client.post(
+        "/auth/refresh",
+        json={"refresh_token": session["refresh_token"]},
+    )
+    assert refresh.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_logout_a_does_not_affect_session_b(async_client):
     first = await reg_and_login(async_client)
     second = await reg_and_login(async_client)

@@ -1,5 +1,7 @@
 import pytest
+from httpx import ASGITransport, AsyncClient
 
+from app.main import fastapi_app
 from tests.conftest import make_admin, make_customer, reg_and_login
 
 
@@ -26,3 +28,25 @@ async def test_admin_can_list_users(async_client):
 
     assert response.status_code == 200
     assert response.json()
+
+
+@pytest.mark.asyncio
+async def test_readiness_returns_503_when_dependency_is_down(monkeypatch, async_client):
+    async def healthy() -> bool:
+        return True
+
+    async def unhealthy() -> bool:
+        return False
+
+    monkeypatch.setattr("app.main.check_database", healthy)
+    monkeypatch.setattr("app.main.check_rabbitmq", unhealthy)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=fastapi_app),
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "degraded"
+    assert response.json()["checks"] == {"database": True, "rabbitmq": False}

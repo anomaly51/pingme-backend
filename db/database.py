@@ -8,7 +8,10 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/app_db"
 )
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=os.getenv("SQLALCHEMY_ECHO", "").lower() in {"1", "true", "yes"},
+)
 
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 

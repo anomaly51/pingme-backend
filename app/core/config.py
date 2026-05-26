@@ -15,6 +15,10 @@ def cors_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+def cors_allow_credentials() -> bool:
+    return "*" not in cors_origins()
+
+
 def validate_production_config() -> None:
     if not is_production():
         return
@@ -30,6 +34,8 @@ def validate_production_config() -> None:
 
     if not cors_origins():
         raise RuntimeError("CORS_ORIGINS must be configured in production")
+    if "*" in cors_origins():
+        raise RuntimeError("CORS_ORIGINS cannot contain '*' in production")
 
     if os.getenv("COOKIE_SECURE", "false").lower() not in TRUTHY:
         raise RuntimeError("COOKIE_SECURE must be true in production")

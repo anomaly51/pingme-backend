@@ -347,7 +347,18 @@ class AuthService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        await self._block_jti(jti, datetime.fromtimestamp(payload["exp"], tz=UTC))
+        blocked_current_refresh = await self._block_jti(
+            jti,
+            datetime.fromtimestamp(payload["exp"], tz=UTC),
+        )
+        if not blocked_current_refresh:
+            await self._revoke_session(session)
+            await self.db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token reuse detected. Авторизуйтесь заново.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         await self.db.commit()
         return await self._token_pair(user, session=session)
 
@@ -517,12 +528,17 @@ class AuthService:
         await self.db.commit()
         return True
 
-    async def _block_jti(self, jti: str, expires_at: datetime) -> None:
-        self.db.add(BlockedToken(token=jti, expires_at=expires_at))
+    async def _block_jti(self, jti: str, expires_at: datetime) -> bool:
+        if await self._get_blocked_token(jti):
+            return False
+
         try:
-            await self.db.flush()
+            async with self.db.begin_nested():
+                self.db.add(BlockedToken(token=jti, expires_at=expires_at))
+                await self.db.flush()
         except IntegrityError:
-            await self.db.rollback()
+            return False
+        return True
 
     async def _token_pair(self, user: User, session: AuthSession | None = None) -> dict[str, str]:
         session_id = session.session_id if session else uuid.uuid4().hex
