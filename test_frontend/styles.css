@@ -346,6 +346,54 @@ h3 {
   margin-top: 0;
 }
 
+.selected-form-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d8e1ee;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.selected-form-main,
+.selected-form-section {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  background: #fafbfd;
+}
+
+.mini-label {
+  color: #647282;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.time-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.time-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #e8eefc;
+  color: #1748ad;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.muted-text {
+  color: #647282;
+  font-size: 13px;
+}
+
 .list {
   display: grid;
   gap: 9px;

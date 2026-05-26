@@ -222,8 +222,8 @@ function renderForms() {
         <span class="pill muted">#${form.form_id}</span>
       </div>
       <div class="meta">${escapeHtml(form.description || "Без описания")}</div>
-      <div class="meta">Расписание: ${escapeHtml((form.schedule_crons || []).join(", ") || "не задано")}</div>
-      <div class="meta">Напоминания: ${form.reminder_enabled ? "включены" : "выключены"}</div>
+      <div class="meta">Время: ${formatScheduleTimes(form.schedule_crons).map(escapeHtml).join(", ") || "не задано"}</div>
+      <div class="meta">Статус напоминаний: ${form.reminder_enabled ? "включены" : "выключены"}</div>
       <div class="actions">
         <button class="secondary" data-action="select-form" data-id="${form.form_id}">Использовать эту форму</button>
       </div>
@@ -297,14 +297,40 @@ function updateSelectedFormInfo() {
   }
 
   $("reminderFormSelect").value = String(form.form_id);
-  setResult(
-    "selectedFormInfo",
-    `Дальше тестируем форму #${form.form_id}: ${form.title}. Расписание: ${(form.schedule_crons || []).join(", ") || "не задано"}.`,
-  );
+  renderSelectedFormCard(form);
   setResult(
     "reminderTargetInfo",
     `Напоминание будет создано для формы #${form.form_id}: ${form.title}.`,
   );
+}
+
+function renderSelectedFormCard(form) {
+  const times = formatScheduleTimes(form.schedule_crons);
+  $("selectedFormInfo").className = "selected-form-card";
+  $("selectedFormInfo").innerHTML = `
+    <div class="selected-form-main">
+      <div>
+        <div class="mini-label">Сейчас тестируем</div>
+        <strong>#${form.form_id} - ${escapeHtml(form.title)}</strong>
+      </div>
+    </div>
+    <div class="selected-form-section">
+      <div class="mini-label">Время напоминаний</div>
+      <div class="time-chips">
+        ${
+          times.length
+            ? times.map((time) => `<span class="time-chip">${escapeHtml(time)}</span>`).join("")
+            : '<span class="muted-text">не задано</span>'
+        }
+      </div>
+    </div>
+  `;
+}
+
+function formatScheduleTimes(scheduleCrons = []) {
+  return scheduleCrons
+    .map((value) => String(value).replace(/^daily\s+/i, "").trim())
+    .filter(Boolean);
 }
 
 function updateReminderFormSelection() {
