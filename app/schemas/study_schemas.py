@@ -1,11 +1,11 @@
 from datetime import date
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class StudyTrackingCreate(BaseModel):
-    activity: str = Field(min_length=1, max_length=500)
-    hours_spent: float = Field(gt=0, le=24)
+    activity: str
+    hours_spent: float
 
 
 class FindOfferExtendRequest(BaseModel):

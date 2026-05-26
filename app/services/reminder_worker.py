@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
-from aio_pika.abc import AbstractIncomingMessage
+from aio_pika import IncomingMessage
 from sqlalchemy import select
 
 from app.models.user_model import Reminder, User
@@ -14,7 +14,6 @@ from app.services.reminder_queue import (
     publish_reminder,
     setup_reminder_queues,
 )
-from app.services.reminder_service import ensure_aware_utc
 from app.sockets import sio
 from db.database import SessionLocal
 
@@ -22,7 +21,7 @@ from db.database import SessionLocal
 logger = logging.getLogger(__name__)
 
 
-async def handle_reminder_message(message: AbstractIncomingMessage) -> None:
+async def handle_reminder_message(message: IncomingMessage) -> None:
     async with message.process():
         payload = json.loads(message.body.decode("utf-8"))
         reminder_id = int(payload["reminder_id"])
@@ -41,9 +40,8 @@ async def handle_reminder_message(message: AbstractIncomingMessage) -> None:
                 return
 
             now = datetime.now(UTC)
-            next_run_at = ensure_aware_utc(reminder.next_run_at)
-            if next_run_at > now:
-                delay = int((next_run_at - now).total_seconds())
+            if reminder.next_run_at > now:
+                delay = int((reminder.next_run_at - now).total_seconds())
                 await publish_reminder(reminder.id, max(delay, 1))
                 return
 
@@ -65,7 +63,7 @@ async def handle_reminder_message(message: AbstractIncomingMessage) -> None:
             "delivery_retry_delay_seconds": reminder.delivery_retry_delay_seconds,
             "skip_count": reminder.skip_count,
             "delivery_count": reminder.delivery_count,
-            "next_run_at": ensure_aware_utc(reminder.next_run_at).isoformat(),
+            "next_run_at": reminder.next_run_at.isoformat(),
         }
         preferences = user.notification_preferences or {}
         if preferences.get("realtime", True):

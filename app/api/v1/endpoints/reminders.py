@@ -56,12 +56,11 @@ async def list_reminders(
 @router.post("/{reminder_id}/skip", response_model=ReminderResponse)
 async def skip_reminder(
     reminder_id: int,
-    data: ReminderSkipRequest | None = None,
+    data: ReminderSkipRequest,
     user: User = Depends(get_current_user_obj),
     reminder_service: ReminderService = Depends(),
 ):
-    retry_delay_seconds = data.retry_delay_seconds if data else None
-    return await reminder_service.skip_reminder(reminder_id, user, retry_delay_seconds)
+    return await reminder_service.skip_reminder(reminder_id, user, data.retry_delay_seconds)
 
 
 @router.post("/{reminder_id}/complete", response_model=ReminderResponse)

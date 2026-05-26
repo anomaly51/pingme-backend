@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ConfirmStudyCreate(BaseModel):
-    confirm_name: str = Field(min_length=1, max_length=80)
+    confirm_name: str

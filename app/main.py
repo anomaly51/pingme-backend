@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.endpoints import admin, answers, auth, forms, reminders, study_tracking_router
-from app.core.config import cors_allow_credentials, cors_origins, validate_production_config
+from app.core.config import cors_origins, validate_production_config
 from app.services.auth_service import run_auth_cleanup_scheduler
 from app.services.health_service import check_database, check_rabbitmq
 from app.services.reminder_service import run_reminder_scheduler
@@ -22,15 +22,15 @@ fastapi_app = FastAPI(
     description="FastAPI with PostgreSQL database.",
     version="0.1.0",
 )
-auth_cleanup_scheduler_task: asyncio.Task[None] | None = None
-find_offer_scheduler_task: asyncio.Task[None] | None = None
-reminder_scheduler_task: asyncio.Task[None] | None = None
+auth_cleanup_scheduler_task: asyncio.Task | None = None
+find_offer_scheduler_task: asyncio.Task | None = None
+reminder_scheduler_task: asyncio.Task | None = None
 
 
 fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins(),
-    allow_credentials=cors_allow_credentials(),
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

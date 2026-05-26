@@ -16,7 +16,7 @@ READY_ROUTING_KEY = os.getenv("REMINDER_READY_ROUTING_KEY", "reminder.due")
 DELAY_QUEUE = os.getenv("REMINDER_DELAY_QUEUE", "reminders.delay")
 
 
-async def _connect() -> aio_pika.abc.AbstractRobustConnection:
+async def _connect() -> aio_pika.RobustConnection:
     return await aio_pika.connect_robust(RABBITMQ_URL)
 
 

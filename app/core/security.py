@@ -3,7 +3,6 @@ import os
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
 
 import jwt
 from jwt import PyJWTError
@@ -62,22 +61,15 @@ def _get_decode_key(token: str) -> str:
         raise jwt.InvalidTokenError("Unknown JWT kid") from None
 
 
-def _get_encode_key() -> str:
-    try:
-        return _jwt_key_ring()[JWT_KEY_ID]
-    except KeyError:
-        raise jwt.InvalidTokenError("JWT_KEY_ID is not present in JWT_SECRET_KEYS") from None
-
-
 def get_password_hash(password: str) -> str:
-    return cast(str, pwd_context.hash(password))
+    return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return cast(bool, pwd_context.verify(plain_password, hashed_password))
+    return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(data: dict[str, Any]) -> str:
+def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update(
@@ -89,10 +81,10 @@ def create_access_token(data: dict[str, Any]) -> str:
             "jti": uuid.uuid4().hex,
         }
     )
-    return jwt.encode(to_encode, _get_encode_key(), algorithm=ALGORITHM, headers=_jwt_headers())
+    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM, headers=_jwt_headers())
 
 
-def create_refresh_token(data: dict[str, Any]) -> str:
+def create_refresh_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update(
@@ -104,7 +96,7 @@ def create_refresh_token(data: dict[str, Any]) -> str:
             "jti": uuid.uuid4().hex,
         }
     )
-    return jwt.encode(to_encode, _get_encode_key(), algorithm=ALGORITHM, headers=_jwt_headers())
+    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM, headers=_jwt_headers())
 
 
 def create_confirmation_token(email: str) -> str:
@@ -117,10 +109,10 @@ def create_confirmation_token(email: str) -> str:
         "type": "confirmation",
         "jti": uuid.uuid4().hex,
     }
-    return jwt.encode(to_encode, _get_encode_key(), algorithm=ALGORITHM, headers=_jwt_headers())
+    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM, headers=_jwt_headers())
 
 
-def decode_app_token(token: str) -> dict[str, Any]:
+def decode_app_token(token: str) -> dict:
     return jwt.decode(
         token,
         _get_decode_key(token),

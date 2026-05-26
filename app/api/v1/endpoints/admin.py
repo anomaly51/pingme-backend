@@ -3,7 +3,6 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import Executable
 
 from app.api.dependencies import RoleChecker
 from app.models.user_model import Answer, Form, Reminder, User
@@ -94,7 +93,7 @@ async def list_failed_reminders(
     return [reminder_to_admin_response(reminder) for reminder in result.scalars().all()]
 
 
-async def scalar_count(db: AsyncSession, query: Executable) -> int:
+async def scalar_count(db: AsyncSession, query: object) -> int:
     result = await db.execute(query)
     return int(result.scalar_one())
 

@@ -442,8 +442,6 @@
       "ConfirmStudyCreate": {
         "properties": {
           "confirm_name": {
-            "maxLength": 80,
-            "minLength": 1,
             "title": "Confirm Name",
             "type": "string"
           }
@@ -1212,14 +1210,10 @@
       "StudyTrackingCreate": {
         "properties": {
           "activity": {
-            "maxLength": 500,
-            "minLength": 1,
             "title": "Activity",
             "type": "string"
           },
           "hours_spent": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 24.0,
             "title": "Hours Spent",
             "type": "number"
           }
@@ -1985,18 +1979,11 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/LogoutRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Data"
+                "$ref": "#/components/schemas/LogoutRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -3469,18 +3456,11 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/ReminderSkipRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Data"
+                "$ref": "#/components/schemas/ReminderSkipRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

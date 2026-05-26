@@ -1,12 +1,10 @@
 import datetime
-import logging
-from typing import Any
 
 import gspread
 from fastapi import HTTPException
+from uvicorn import logging
 
 
-logger = logging.getLogger(__name__)
 USER_EMAILS_MAPPING = {
     "fesenko.kostya576@gmail.com": {"learned": 9, "hours": 10},
     "vania@gmail.com": {"learned": 2, "hours": 3},
@@ -39,26 +37,24 @@ VERIFICATION_MATRIX = {
 }
 
 
-def get_sheet() -> Any:
+def get_sheet():
     try:
         gc = gspread.service_account(filename="google_services.json")
         return gc.open("Find offer").sheet1
     except Exception as e:
-        logger.exception("Google Auth Error")
+        logging.error(f"Google Auth Error: {e}")
         raise HTTPException(status_code=500, detail="Google connection error") from e
 
 
-def get_row_index(sheet: Any) -> int | None:
+def get_row_index(sheet):
     today = datetime.datetime.now().strftime("%a, %b %-d")
     try:
-        return int(sheet.find(today).row)
-    except Exception as exc:
-        if exc.__class__.__name__ == "CellNotFound" or "not found" in str(exc).lower():
-            return None
-        raise
+        return sheet.find(today).row
+    except gspread.CellNotFound:
+        return None
 
 
-async def update_study_data(email: str, activity: str, hours: float) -> int:
+async def update_study_data(email: str, activity: str, hours: float):
     if email not in USER_EMAILS_MAPPING:
         raise HTTPException(status_code=403, detail="Your email is not linked to the table.")
 
@@ -77,7 +73,7 @@ async def update_study_data(email: str, activity: str, hours: float) -> int:
         raise HTTPException(status_code=500, detail=f"Recording error: {str(e)}") from e
 
 
-async def confirm_study_data(student_name: str, manager_name: str) -> bool:
+async def confirm_study_data(student_name: str, manager_name: str):
     if student_name not in VERIFICATION_MATRIX:
         raise HTTPException(status_code=400, detail=f"Student {student_name} not found in matrix.")
 
