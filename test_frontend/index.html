@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PingMe - тестовый интерфейс</title>
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=15" />
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   </head>
   <body>
@@ -82,48 +82,204 @@
           <div class="card-head">
             <div>
               <span class="step-label">Шаг 3</span>
-              <h2>Создать или выбрать форму</h2>
-              <p>Форма описывает активность, которую потом спросит напоминание.</p>
+              <h2>Создать быструю форму</h2>
+              <p>Готовая форма для быстрой проверки сценария.</p>
             </div>
             <button id="refreshFormsBtn" class="secondary">Обновить</button>
           </div>
 
-          <div class="form-grid builder-grid">
-            <label>
-              Название активности
-              <input id="formTitleInput" value="Игра на гитаре" />
-            </label>
-            <div class="field-block schedule-field">
-              <div class="field-label">Напоминания по времени</div>
-              <span id="scheduleTimesHost" class="time-list"></span>
-              <button id="addScheduleTimeBtn" class="secondary small" type="button">Добавить напоминание</button>
+          <div class="quick-form-panel">
+            <div class="quick-form-head">
+              <h3>Готовая форма</h3>
+              <div class="meta">Пример: игра на гитаре. Название можно поставить любое.</div>
             </div>
-            <label>
-              Кнопка “позже”
-              <select id="skipDelayInput">
-                <option value="900">через 15 минут</option>
-                <option value="1800" selected>через 30 минут</option>
-                <option value="2700">через 45 минут</option>
-                <option value="3600">через 1 час</option>
-              </select>
-              <span class="hint">Это задержка после нажатия “позже” в напоминании.</span>
-            </label>
-            <label>
-              Лимит ответа: часы
-              <input id="maxHoursInput" type="number" value="10" min="0" />
-            </label>
+
+            <div class="form-grid quick-form-grid">
+              <label>
+                Название формы
+                <input id="quickTitleInput" value="Игра на гитаре" />
+              </label>
+              <label>
+                Настройка кнопки “позже”
+                <select id="skipDelayInput">
+                  <option value="900">через 15 минут</option>
+                  <option value="1800" selected>через 30 минут</option>
+                  <option value="2700">через 45 минут</option>
+                  <option value="3600">через 1 час</option>
+                </select>
+              </label>
+              <label>
+                Лимит быстрой формы: часы
+                <input id="maxHoursInput" type="number" value="10" min="0" />
+              </label>
+              <div class="field-block schedule-field">
+                <div class="field-label">Когда показывать</div>
+                <span id="scheduleTimesHost" class="time-list"></span>
+                <button id="addScheduleTimeBtn" class="secondary small" type="button">Добавить напоминание</button>
+              </div>
+            </div>
+
+            <div class="actions panel-actions">
+              <button id="createGuitarFormBtn" type="button">Создать быструю форму</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="step" id="stepUniversalForm">
+          <div class="card-head">
+            <div>
+              <span class="step-label">Шаг 4</span>
+              <h2>Создать универсальную форму</h2>
+              <p>Создай свою структуру: траты, настроение, ползунки, чекбоксы и другие поля.</p>
+            </div>
           </div>
 
-          <div class="inline-help">
-            Лимит ответа - это максимум часов, который можно будет указать при заполнении активности.
-          </div>
+          <div class="builder-panel">
+            <div class="substep-card">
+              <div class="substep-head">
+                <span>4.1</span>
+                <div>
+                  <h3>Основа формы</h3>
+                  <p>Название нужно только для списка форм и текста напоминаний.</p>
+                </div>
+              </div>
+              <div class="form-grid two">
+                <label>
+                  Название формы
+                  <span class="hint">Например: “Траты за день”, “Настроение”, “Утренний отчет”.</span>
+                  <input id="formTitleInput" value="Траты за день" />
+                </label>
+              </div>
+            </div>
 
-          <div class="actions">
-            <button id="createFormBtn">Создать форму</button>
+            <div class="substep-card">
+              <div class="substep-head">
+                <span>4.2</span>
+                <div>
+                  <h3>Шаблон или пустой старт</h3>
+                  <p>Шаблон только заполняет примерные поля. После этого можно удалить их и собрать форму как угодно.</p>
+                </div>
+              </div>
+              <div class="preset-grid" aria-label="Шаблоны формы">
+                <button id="presetExpensesBtn" class="preset-card" type="button">
+                  <strong>Траты</strong>
+                  <span>Сумма, категории, экономия. Всё редактируется.</span>
+                </button>
+                <button id="presetMoodBtn" class="preset-card" type="button">
+                  <strong>Настроение</strong>
+                  <span>Настроение, энергия, комментарий. Всё редактируется.</span>
+                </button>
+                <button id="presetGuitarBtn" class="preset-card" type="button">
+                  <strong>Пример</strong>
+                  <span>Демо-форма, чтобы быстро посмотреть работу полей.</span>
+                </button>
+                <button id="presetEmptyBtn" class="preset-card" type="button">
+                  <strong>Пустая</strong>
+                  <span>Начать без полей и добавить только свои.</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="substep-card">
+              <div class="substep-head">
+                <span>4.3</span>
+                <div>
+                  <h3>Поля формы</h3>
+                  <p>Каждое поле станет HTML-контролом при заполнении формы. Можно добавлять, удалять и менять порядок позже.</p>
+                </div>
+              </div>
+              <div class="builder-workspace">
+                <div class="builder-left">
+                <div class="field-editor">
+                  <label>
+                    Подпись поля
+                    <span class="hint">Вопрос, который увидит пользователь.</span>
+                    <input id="fieldLabelInput" value="Сколько потратил?" />
+                  </label>
+                  <label>
+                    Тип ответа
+                    <span class="hint">Какой HTML-контрол показать.</span>
+                    <select id="fieldTypeInput">
+                      <option value="number">число</option>
+                      <option value="range">ползунок</option>
+                      <option value="text">текст</option>
+                      <option value="select">выбор из списка</option>
+                      <option value="multiselect">несколько вариантов</option>
+                      <option value="boolean">галочка да/нет</option>
+                      <option value="date">дата</option>
+                      <option value="time">время</option>
+                    </select>
+                  </label>
+                  <label>
+                    Технический ключ
+                    <span class="hint">Можно оставить как есть; он уйдет в JSON.</span>
+                    <input id="fieldNameInput" value="amount" />
+                  </label>
+                  <label>
+                    Настройки
+                    <span class="hint">Для выбора: варианты через запятую. Для числа/ползунка: min, max.</span>
+                    <input id="fieldOptionsInput" value="еда, транспорт, развлечения" />
+                  </label>
+                  <label class="checkbox-label">
+                    <input id="fieldRequiredInput" type="checkbox" />
+                    Обязательное
+                  </label>
+                  <button id="addFieldBtn" type="button">Добавить поле</button>
+                </div>
+                <div id="fieldEditorResult" class="result muted">Поле будет добавлено в JSON структуры формы.</div>
+
+                <div id="fieldsList" class="field-list"></div>
+              </div>
+
+              <div class="builder-json">
+                <div class="builder-preview">
+                  <h3>Предпросмотр полей</h3>
+                  <div class="meta">Так примерно будет выглядеть форма при ответе.</div>
+                  <div id="formPreviewHost" class="dynamic-form"></div>
+                </div>
+              </div>
+            </div>
+            </div>
+
+            <div class="substep-card">
+              <div class="substep-head">
+                <span>4.4</span>
+                <div>
+                  <h3>Технический предпросмотр</h3>
+                  <p>Это то, что backend сохранит как JSON. Обычно менять вручную не нужно.</p>
+                </div>
+              </div>
+              <details class="extra technical-preview">
+                <summary>Показать JSON структуры и CRON</summary>
+                <label class="json-field">
+                  JSON структуры формы
+                  <textarea id="formStructureInput" rows="10" spellcheck="false"></textarea>
+                </label>
+
+                <label class="json-field">
+                  CRON строки
+                  <textarea id="scheduleCronsInput" rows="4" spellcheck="false"></textarea>
+                </label>
+              </details>
+            </div>
+
+            <div class="substep-card">
+              <div class="substep-head">
+                <span>4.5</span>
+                <div>
+                  <h3>Создание</h3>
+                  <p>Нажми кнопку, когда название и список полей готовы.</p>
+                </div>
+              </div>
+              <div class="actions panel-actions">
+                <button id="createFormBtn">Создать универсальную форму</button>
+              </div>
+            </div>
           </div>
 
           <div class="selection-box">
-            <h3>Выбранная форма</h3>
+            <h3>4.6 Выбранная форма</h3>
+            <div class="inline-help">Это форма для одиночного напоминания и одиночного ответа. Группу создавать не обязательно.</div>
             <label>
               Использовать дальше
               <select id="answerFormSelect"></select>
@@ -131,14 +287,34 @@
             <div id="selectedFormInfo" class="result muted">Форма пока не выбрана.</div>
           </div>
 
-          <h3>Доступные формы</h3>
+          <h3>4.7 Доступные формы</h3>
           <div id="formsList" class="list"></div>
+
+          <div class="selection-box">
+            <h3>4.8 Группа форм <span class="muted-inline">необязательно</span></h3>
+            <div class="inline-help">Группа нужна только если одно напоминание должно открыть несколько форм сразу, например “Вечерний отчет”.</div>
+            <div class="form-grid two">
+              <label>
+                Название группы
+                <input id="groupTitleInput" value="Вечерний отчет" />
+              </label>
+              <label>
+                Формы в группе
+                <select id="groupFormsSelect" multiple size="4"></select>
+              </label>
+            </div>
+            <div class="actions">
+              <button id="createGroupBtn" class="secondary" type="button">Создать группу</button>
+              <button id="refreshGroupsBtn" class="secondary" type="button">Обновить группы</button>
+            </div>
+            <div id="groupsList" class="list"></div>
+          </div>
         </section>
 
         <section class="step" id="stepReminder">
           <div class="card-head">
             <div>
-              <span class="step-label">Шаг 4</span>
+              <span class="step-label">Шаг 5</span>
               <h2>Вызвать напоминание</h2>
               <p>Проверь создание, очередь, realtime-баннер и действия с напоминанием.</p>
             </div>
@@ -147,11 +323,27 @@
 
           <div class="selection-box">
             <h3>Для какой активности напомнить</h3>
+            <div class="choice-help">
+              <div>
+                <strong>Одиночное напоминание</strong>
+                <p>Выбери одну форму и нажми “Спросить форму”.</p>
+              </div>
+              <div>
+                <strong>Групповое напоминание</strong>
+                <p>Выбери группу, если нужно показать несколько форм сразу.</p>
+              </div>
+            </div>
             <label>
               Форма
+              <span class="hint">Для одиночного напоминания.</span>
               <select id="reminderFormSelect"></select>
             </label>
-            <div id="reminderTargetInfo" class="result muted">Сначала выбери или создай форму в шаге 3.</div>
+            <label>
+              Группа
+              <span class="hint">Необязательно. Для нескольких форм сразу.</span>
+              <select id="reminderGroupSelect"></select>
+            </label>
+            <div id="reminderTargetInfo" class="result muted">Сначала выбери или создай форму.</div>
           </div>
 
           <div class="form-grid inline">
@@ -170,7 +362,8 @@
               </select>
             </label>
             <div class="actions inside">
-              <button id="createReminderBtn">Спросить сейчас</button>
+              <button id="createReminderBtn">Спросить форму</button>
+              <button id="createGroupReminderBtn" class="secondary" type="button">Спросить группу</button>
             </div>
           </div>
 
@@ -190,42 +383,89 @@
         <section class="step" id="stepAnswer">
           <div class="card-head">
             <div>
-              <span class="step-label">Шаг 5</span>
+              <span class="step-label">Шаг 6</span>
               <h2>Заполнить активность</h2>
-              <p>Сохрани ответ и проверь статистику по выбранной форме.</p>
+              <p>Можно сохранить ответ по одной форме или заполнить группу форм одним действием.</p>
             </div>
             <button id="statsBtn" class="secondary">Статистика</button>
           </div>
 
-          <div class="form-grid answer-grid">
-            <label>
-              Часы
-              <input id="hoursInput" type="number" value="0" min="0" />
-            </label>
-            <label>
-              Минуты
-              <input id="minutesInput" type="number" value="45" min="0" max="59" />
-            </label>
-            <label>
-              Настроение
-              <select id="moodInput">
-                <option value="terrible">ужасно</option>
-                <option value="bad">плохо</option>
-                <option value="tired">устал</option>
-                <option value="ok">нормально</option>
-                <option value="calm">спокойно</option>
-                <option value="good" selected>хорошо</option>
-                <option value="great">отлично</option>
-                <option value="focused">сфокусирован</option>
-                <option value="inspired">вдохновлен</option>
-              </select>
-            </label>
-            <div class="actions inside">
-              <button id="submitAnswerBtn">Сохранить</button>
+          <div class="choice-help">
+            <div>
+              <strong>Одиночный ответ</strong>
+              <p>Выбери форму выше, заполни поля и нажми “Сохранить”.</p>
+            </div>
+            <div>
+              <strong>Групповой ответ</strong>
+              <p>Выбери группу ниже, проверь JSON группы и нажми “Сохранить группу”.</p>
             </div>
           </div>
 
-          <pre id="answerOutput" class="output">Ответ формы или статистика появятся здесь.</pre>
+          <div class="answer-mode">
+            <h3>Одиночный ответ</h3>
+            <div class="inline-help">Используй этот блок, если отвечаешь только на одну выбранную форму.</div>
+            <div class="form-grid answer-grid">
+              <label>
+                Часы
+                <span class="hint">Быстрый пример для формы “игра на гитаре”.</span>
+                <input id="hoursInput" type="number" value="0" min="0" />
+              </label>
+              <label>
+                Минуты
+                <span class="hint">Добавятся к часам при сборке JSON.</span>
+                <input id="minutesInput" type="number" value="45" min="0" max="59" />
+              </label>
+              <label>
+                Настроение
+                <span class="hint">Пример select-поля.</span>
+                <select id="moodInput">
+                  <option value="terrible">ужасно</option>
+                  <option value="bad">плохо</option>
+                  <option value="tired">устал</option>
+                  <option value="ok">нормально</option>
+                  <option value="calm">спокойно</option>
+                  <option value="good" selected>хорошо</option>
+                  <option value="great">отлично</option>
+                  <option value="focused">сфокусирован</option>
+                  <option value="inspired">вдохновлен</option>
+                </select>
+              </label>
+              <div class="actions inside">
+                <button id="buildAnswerJsonBtn" class="secondary" type="button">Собрать JSON</button>
+                <button id="submitAnswerBtn">Сохранить</button>
+              </div>
+            </div>
+
+            <div id="dynamicAnswerHost" class="dynamic-form"></div>
+
+            <label class="json-field">
+              JSON ответа
+              <span class="hint">Именно этот объект уйдет в `answers_data`.</span>
+              <textarea id="answerJsonInput" rows="9" spellcheck="false"></textarea>
+            </label>
+
+            <pre id="answerOutput" class="output">Ответ формы или статистика появятся здесь.</pre>
+          </div>
+
+          <div class="selection-box answer-mode">
+            <h3>Групповой ответ</h3>
+            <div class="inline-help">Этот блок нужен только для группы. Он сохранит несколько ответов под одним `submission_id`.</div>
+            <label>
+              Группа
+              <span class="hint">Выбери заранее созданную группу форм.</span>
+              <select id="answerGroupSelect"></select>
+            </label>
+            <label class="json-field">
+              JSON группы
+              <span class="hint">Массив `answers`: по одному объекту на форму в группе.</span>
+              <textarea id="groupAnswerJsonInput" rows="10" spellcheck="false"></textarea>
+            </label>
+            <div class="actions">
+              <button id="buildGroupAnswerJsonBtn" class="secondary" type="button">Собрать JSON группы</button>
+              <button id="submitGroupAnswerBtn" type="button">Сохранить группу</button>
+            </div>
+          </div>
+
           <div class="history-toggle">
             <button id="toggleAnswerHistoryBtn" class="secondary" type="button">Показать историю ответов</button>
           </div>
@@ -238,7 +478,7 @@
         <section class="step" id="stepLog">
           <div class="card-head">
             <div>
-              <span class="step-label">Шаг 6</span>
+              <span class="step-label">Шаг 7</span>
               <h2>Технический лог</h2>
               <p>Здесь видно, какие запросы уходили и что вернул backend.</p>
             </div>
@@ -249,6 +489,6 @@
       </main>
     </div>
 
-    <script src="./app.js?v=4"></script>
+    <script src="./app.js?v=15"></script>
   </body>
 </html>

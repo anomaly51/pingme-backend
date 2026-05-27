@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 ReminderStatus = Literal["pending", "skipped", "completed", "cancelled"]
@@ -11,9 +11,16 @@ ReminderEnqueueStatus = Literal["pending", "queued", "failed"]
 class ReminderCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     form_id: int | None = None
+    form_group_id: int | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     retry_delay_seconds: int = Field(default=3600, ge=60, le=60 * 60 * 24 * 30)
     due_in_seconds: int = Field(default=0, ge=0, le=60 * 60 * 24 * 30)
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "ReminderCreate":
+        if self.form_id is not None and self.form_group_id is not None:
+            raise ValueError("Use either form_id or form_group_id, not both")
+        return self
 
 
 class ReminderSkipRequest(BaseModel):
@@ -23,6 +30,7 @@ class ReminderSkipRequest(BaseModel):
 class ReminderResponse(BaseModel):
     id: int
     form_id: int | None
+    form_group_id: int | None = None
     title: str
     payload: dict[str, Any]
     status: ReminderStatus

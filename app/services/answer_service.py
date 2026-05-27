@@ -8,7 +8,6 @@ from app.models.user_model import Answer, Form, Reminder, User
 from app.schemas.form_schemas import (
     AnswerCreate,
     AnswerStatsResponse,
-    validate_answers_against_form_structure,
 )
 from app.services.reminder_service import ACTIVE_REMINDER_STATUSES
 from db.database import get_db
@@ -25,10 +24,6 @@ class AnswerService:
 
         if not form:
             raise HTTPException(status_code=404, detail="Specified form not found")
-        try:
-            validate_answers_against_form_structure(answer_data.answers_data, form.form_structure)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         new_answer = Answer(
             form_id=form_id,

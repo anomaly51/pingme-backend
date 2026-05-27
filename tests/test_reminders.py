@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.models.user_model import Reminder
+from app.models.user_model import Answer, Reminder
 from app.services.reminder_service import (
     ReminderService,
     is_time_schedule_due,
@@ -369,7 +369,7 @@ async def test_answer_stats_returns_numeric_averages(async_client):
 
 
 @pytest.mark.asyncio
-async def test_answer_validation_rejects_invalid_payload(async_client):
+async def test_answer_save_accepts_raw_json_object(async_client):
     session = await reg_and_login(async_client)
     form = await async_client.post(
         "/forms",
@@ -388,26 +388,118 @@ async def test_answer_validation_rejects_invalid_payload(async_client):
 
     response = await async_client.post(
         f"/forms/{form_id}/answers",
-        json={"answers_data": {"hours": 20}},
+        json={"answers_data": {"hours": 20, "unknown_field": {"nested": [1, True, None]}}},
         headers=session["headers"],
     )
 
-    assert response.status_code == 422
-    assert "above maximum" in response.json()["detail"]
+    assert response.status_code == 201
+    assert response.json()["message"] == "Answers saved"
 
 
 @pytest.mark.asyncio
-async def test_form_structure_validation_rejects_bad_field(async_client):
+async def test_post_answers_saves_form_id_user_id_and_raw_json(async_client, db_session):
     session = await reg_and_login(async_client)
-
-    response = await async_client.post(
+    form = await async_client.post(
         "/forms",
         json={
-            "title": "Bad form",
-            "form_structure": {"fields": [{"name": "x", "type": "unknown"}]},
+            "title": "Daily survey",
+            "form_structure": {"fields": [{"name": "mood", "type": "text"}]},
             "schedule_crons": [],
         },
         headers=session["headers"],
     )
+    form_id = form.json()["form_id"]
+    answers_data = {
+        "random_question_1": "Good",
+        "slider_value": 10,
+        "dynamic": {"items": ["a", "b"], "enabled": True},
+    }
 
-    assert response.status_code == 422
+    response = await async_client.post(
+        "/answers",
+        json={"form_id": form_id, "answers_data": answers_data},
+        headers=session["headers"],
+    )
+
+    assert response.status_code == 201
+    assert response.json()["message"] == "Answers saved"
+    answer = (
+        await db_session.execute(select(Answer).where(Answer.id == response.json()["answer_id"]))
+    ).scalar_one()
+    assert answer.form_id == form_id
+    assert answer.user_id == session["id"]
+    assert answer.answers_data == answers_data
+    assert answer.created_at is not None
+
+
+@pytest.mark.asyncio
+async def test_form_crud_accepts_arbitrary_json_structure_and_deletes(async_client):
+    session = await reg_and_login(async_client)
+    form_structure = {
+        "any_random_key": "random_value",
+        "components": [{"kind": "slider", "name": "amount"}],
+    }
+    schedule_crons = ["0 14,17 * * 2", "0 17,18 * * 4"]
+
+    created = await async_client.post(
+        "/forms",
+        json={
+            "title": "My Daily Survey",
+            "form_structure": form_structure,
+            "schedule_crons": schedule_crons,
+        },
+        headers=session["headers"],
+    )
+    assert created.status_code == 201, created.text
+    form_id = created.json()["form_id"]
+
+    fetched = await async_client.get(f"/forms/{form_id}", headers=session["headers"])
+    assert fetched.status_code == 200
+    assert fetched.json()["form_structure"] == form_structure
+    assert fetched.json()["schedule_crons"] == schedule_crons
+
+    updated_structure = {"different_random_structure": True}
+    updated = await async_client.put(
+        f"/forms/{form_id}",
+        json={
+            "title": "Updated Survey",
+            "form_structure": updated_structure,
+            "schedule_crons": ["0 12 * * *"],
+        },
+        headers=session["headers"],
+    )
+    assert updated.status_code == 200
+    assert updated.json()["message"] == "Form updated successfully"
+
+    fetched_updated = await async_client.get(f"/forms/{form_id}", headers=session["headers"])
+    assert fetched_updated.json()["title"] == "Updated Survey"
+    assert fetched_updated.json()["form_structure"] == updated_structure
+    assert fetched_updated.json()["schedule_crons"] == ["0 12 * * *"]
+
+    deleted = await async_client.delete(f"/forms/{form_id}", headers=session["headers"])
+    assert deleted.status_code == 200
+    assert deleted.json()["message"] == "Form has been deleted successfully"
+
+    missing = await async_client.get(f"/forms/{form_id}", headers=session["headers"])
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_form_archive_endpoint_still_archives(async_client):
+    session = await reg_and_login(async_client)
+    created = await async_client.post(
+        "/forms",
+        json={
+            "title": "Archive me",
+            "form_structure": {"any": "json"},
+            "schedule_crons": [],
+        },
+        headers=session["headers"],
+    )
+    form_id = created.json()["form_id"]
+
+    archived = await async_client.post(f"/forms/{form_id}/archive", headers=session["headers"])
+
+    assert archived.status_code == 200
+    assert archived.json()["form"]["is_active"] is False
+    assert archived.json()["form"]["archived_at"] is not None

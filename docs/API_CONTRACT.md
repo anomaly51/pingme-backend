@@ -51,7 +51,7 @@ If the app was offline, use `GET /reminders/current` on startup to fetch missed 
 - `PATCH /forms/{form_id}/reminder-settings`
 - `POST /forms/{form_id}/archive`
 - `POST /forms/{form_id}/restore`
-- `DELETE /forms/{form_id}` archives the form for backwards compatibility.
+- `DELETE /forms/{form_id}`
 
 Supported schedule strings:
 
@@ -67,35 +67,20 @@ Supported schedule strings:
 
 Time-of-day schedules are evaluated in the user's `timezone`.
 
-`form_structure` is validated. The minimum shape is:
+`form_structure` is stored as raw JSON object data. The backend does not inspect
+or validate the component structure inside it.
 
 ```json
 {
-  "fields": [
-    {
-      "name": "hours",
-      "label": "Hours",
-      "type": "number",
-      "required": true,
-      "min": 0,
-      "max": 12
-    }
-  ]
+  "any_random_key": "random_value",
+  "components": []
 }
 ```
 
-Supported field types:
-
-- `text`
-- `number`
-- `select`
-- `checkbox`
-- `boolean`
-- `date`
-- `time`
-
-Answers are validated against the form structure. Unknown fields, missing required
-fields, invalid select options, and out-of-range numeric values return `422`.
+`schedule_crons` is stored as a JSON array of strings. `DELETE /forms/{form_id}`
+physically deletes the form; `/archive` and `/restore` remain available for
+soft-archive workflows. Submitted answers are also stored as raw JSON and are not
+validated against `form_structure`.
 
 ## Reminders
 
@@ -110,12 +95,43 @@ fields, invalid select options, and out-of-range numeric values return `422`.
 
 ## Answers
 
+- `POST /answers`
 - `POST /forms/{form_id}/answers`
 - `GET /forms/{form_id}/answers?created_from=...&created_to=...&limit=100&offset=0`
 - `GET /forms/{form_id}/answers/stats`
+- `POST /form-groups/{group_id}/answers`
 
-Posting an answer completes active reminders for that form and returns
+`POST /answers` accepts `form_id` and arbitrary JSON object data in
+`answers_data`, then returns `201 Created` with `answer_id`.
+
+The legacy `POST /forms/{form_id}/answers` route is still available. Posting an
+answer completes active reminders for that form and returns
 `completed_reminder_ids`.
+
+`POST /form-groups/{group_id}/answers` accepts one raw JSON answer object per
+form in the group and stores them under one `submission_id`.
+
+```json
+{
+  "answers": [
+    { "form_id": 5, "answers_data": { "amount": 42.5 } },
+    { "form_id": 6, "answers_data": { "mood": "good" } }
+  ]
+}
+```
+
+## Form Groups
+
+- `POST /form-groups`
+- `GET /form-groups`
+- `GET /form-groups/{group_id}`
+- `PUT /form-groups/{group_id}`
+- `POST /form-groups/{group_id}/archive`
+- `POST /form-groups/{group_id}/restore`
+
+Groups let one reminder ask several forms at once. A group owns ordering through
+`form_ids`, has its own schedule/reminder settings, and reminders can target it
+with `form_group_id`.
 
 ## User Profile
 

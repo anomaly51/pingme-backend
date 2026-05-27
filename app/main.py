@@ -7,7 +7,15 @@ import socketio
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.endpoints import admin, answers, auth, forms, reminders, study_tracking_router
+from app.api.v1.endpoints import (
+    admin,
+    answers,
+    auth,
+    form_groups,
+    forms,
+    reminders,
+    study_tracking_router,
+)
 from app.core.config import cors_allow_credentials, cors_origins, validate_production_config
 from app.core.observability import RequestLoggingMiddleware, configure_logging
 from app.services.auth_service import run_auth_cleanup_scheduler
@@ -112,6 +120,7 @@ async def health_ready(response: Response):
 fastapi_app.include_router(auth.router)
 fastapi_app.include_router(auth.users_router)
 fastapi_app.include_router(forms.router)
+fastapi_app.include_router(form_groups.router)
 fastapi_app.include_router(answers.router)
 fastapi_app.include_router(reminders.router)
 fastapi_app.include_router(admin.router)

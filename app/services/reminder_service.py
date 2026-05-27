@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user_model import Form, Reminder, User
+from app.models.user_model import Form, FormGroup, Reminder, User
 from app.schemas.reminder_schemas import ReminderCreate
 from app.services.reminder_queue import publish_reminder
 from db.database import SessionLocal, get_db
@@ -27,11 +27,14 @@ class ReminderService:
     async def create_reminder(self, data: ReminderCreate, user: User) -> Reminder:
         if data.form_id is not None:
             await self._ensure_user_form(data.form_id, user)
+        if data.form_group_id is not None:
+            await self._ensure_user_form_group(data.form_group_id, user)
 
         now = datetime.now(UTC)
         reminder = Reminder(
             user_id=user.id,
             form_id=data.form_id,
+            form_group_id=data.form_group_id,
             title=data.title,
             payload=data.payload,
             status="pending",
@@ -62,6 +65,7 @@ class ReminderService:
         user: User,
         statuses: set[str] | None = None,
         form_id: int | None = None,
+        form_group_id: int | None = None,
         due_only: bool = False,
         limit: int = 100,
         offset: int = 0,
@@ -72,6 +76,9 @@ class ReminderService:
         if form_id is not None:
             await self._ensure_user_form(form_id, user)
             query = query.where(Reminder.form_id == form_id)
+        if form_group_id is not None:
+            await self._ensure_user_form_group(form_group_id, user)
+            query = query.where(Reminder.form_group_id == form_group_id)
         if due_only:
             query = query.where(Reminder.next_run_at <= datetime.now(UTC))
         query = (
@@ -162,6 +169,56 @@ class ReminderService:
 
         return requeued
 
+    async def create_due_form_group_reminders(self, now: datetime | None = None) -> list[Reminder]:
+        now = now or datetime.now(UTC)
+        result = await self.db.execute(
+            select(FormGroup, User)
+            .join(User, User.id == FormGroup.user_id)
+            .where(
+                FormGroup.reminder_enabled.is_(True),
+                FormGroup.is_active.is_(True),
+                FormGroup.archived_at.is_(None),
+            )
+        )
+        created: list[Reminder] = []
+        for group, user in result.all():
+            if not should_schedule_form_reminder(group, now, user.timezone):
+                continue
+
+            if await self._has_active_form_group_reminder(group.user_id, group.id):
+                group.last_reminder_scheduled_at = now
+                self.db.add(group)
+                continue
+
+            reminder = Reminder(
+                user_id=group.user_id,
+                form_group_id=group.id,
+                title=group.reminder_title or group.title,
+                payload=group.reminder_payload or {"form_group_id": group.id},
+                status="pending",
+                retry_delay_seconds=group.skip_retry_delay_seconds,
+                delivery_retry_delay_seconds=group.delivery_retry_delay_seconds,
+                next_run_at=now,
+                skip_count=0,
+                delivery_count=0,
+                updated_at=now,
+            )
+            group.last_reminder_scheduled_at = now
+            group.updated_at = now
+            self.db.add(group)
+            self.db.add(reminder)
+            try:
+                await self.db.commit()
+            except IntegrityError:
+                await self.db.rollback()
+                continue
+            await self.db.refresh(reminder)
+            await self.enqueue_reminder(reminder)
+            created.append(reminder)
+
+        await self.db.commit()
+        return created
+
     async def skip_reminder(
         self,
         reminder_id: int,
@@ -245,11 +302,31 @@ class ReminderService:
         if result.scalar_one_or_none() is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
 
+    async def _ensure_user_form_group(self, group_id: int, user: User) -> None:
+        result = await self.db.execute(
+            select(FormGroup.id).where(FormGroup.id == group_id, FormGroup.user_id == user.id)
+        )
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Form group not found",
+            )
+
     async def _has_active_form_reminder(self, user_id: int, form_id: int) -> bool:
         result = await self.db.execute(
             select(Reminder.id).where(
                 Reminder.user_id == user_id,
                 Reminder.form_id == form_id,
+                Reminder.status.in_(ACTIVE_REMINDER_STATUSES),
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def _has_active_form_group_reminder(self, user_id: int, group_id: int) -> bool:
+        result = await self.db.execute(
+            select(Reminder.id).where(
+                Reminder.user_id == user_id,
+                Reminder.form_group_id == group_id,
                 Reminder.status.in_(ACTIVE_REMINDER_STATUSES),
             )
         )
@@ -404,6 +481,7 @@ async def run_reminder_scheduler() -> None:
             async with SessionLocal() as db:
                 service = ReminderService(db)
                 await service.create_due_form_reminders()
+                await service.create_due_form_group_reminders()
                 await service.requeue_stale_pending_reminders()
         except Exception:
             logger.exception("Reminder scheduler failed")

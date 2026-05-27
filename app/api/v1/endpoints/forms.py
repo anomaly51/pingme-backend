@@ -112,4 +112,4 @@ async def delete_form(
     form_id: int, user: User = Depends(get_current_user_obj), form_service: FormService = Depends()
 ):
     await form_service.delete_form(form_id, user)
-    return {"message": "Form has been archived"}
+    return {"message": "Form has been deleted successfully"}

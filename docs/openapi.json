@@ -208,6 +208,25 @@
         "title": "AnswerCreateResponse",
         "type": "object"
       },
+      "AnswerCreateWithFormId": {
+        "properties": {
+          "answers_data": {
+            "additionalProperties": true,
+            "title": "Answers Data",
+            "type": "object"
+          },
+          "form_id": {
+            "title": "Form Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "answers_data",
+          "form_id"
+        ],
+        "title": "AnswerCreateWithFormId",
+        "type": "object"
+      },
       "AnswerResponse": {
         "properties": {
           "answer_id": {
@@ -227,6 +246,17 @@
           "form_id": {
             "title": "Form Id",
             "type": "integer"
+          },
+          "submission_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Id"
           }
         },
         "required": [
@@ -236,6 +266,24 @@
           "created_at"
         ],
         "title": "AnswerResponse",
+        "type": "object"
+      },
+      "AnswerSaveResponse": {
+        "properties": {
+          "answer_id": {
+            "title": "Answer Id",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "answer_id"
+        ],
+        "title": "AnswerSaveResponse",
         "type": "object"
       },
       "AnswerStatsResponse": {
@@ -609,6 +657,371 @@
         "title": "FormCreate",
         "type": "object"
       },
+      "FormGroupAnswerCreate": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/GroupAnswerItem"
+            },
+            "minItems": 1,
+            "title": "Answers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "title": "FormGroupAnswerCreate",
+        "type": "object"
+      },
+      "FormGroupAnswerResponse": {
+        "properties": {
+          "answer_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Answer Ids",
+            "type": "array"
+          },
+          "completed_reminder_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Completed Reminder Ids",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "submission_id": {
+            "title": "Submission Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message",
+          "submission_id",
+          "answer_ids",
+          "completed_reminder_ids"
+        ],
+        "title": "FormGroupAnswerResponse",
+        "type": "object"
+      },
+      "FormGroupCreate": {
+        "properties": {
+          "delivery_retry_delay_seconds": {
+            "default": 3600,
+            "maximum": 2592000.0,
+            "minimum": 60.0,
+            "title": "Delivery Retry Delay Seconds",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "form_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Form Ids",
+            "type": "array"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "reminder_enabled": {
+            "default": false,
+            "title": "Reminder Enabled",
+            "type": "boolean"
+          },
+          "reminder_payload": {
+            "additionalProperties": true,
+            "title": "Reminder Payload",
+            "type": "object"
+          },
+          "reminder_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder Title"
+          },
+          "schedule_crons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Schedule Crons",
+            "type": "array"
+          },
+          "skip_retry_delay_seconds": {
+            "default": 3600,
+            "maximum": 2592000.0,
+            "minimum": 60.0,
+            "title": "Skip Retry Delay Seconds",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "form_ids"
+        ],
+        "title": "FormGroupCreate",
+        "type": "object"
+      },
+      "FormGroupMutationResponse": {
+        "properties": {
+          "group": {
+            "$ref": "#/components/schemas/FormGroupResponse"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "group_id",
+          "group"
+        ],
+        "title": "FormGroupMutationResponse",
+        "type": "object"
+      },
+      "FormGroupResponse": {
+        "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivery_retry_delay_seconds": {
+            "title": "Delivery Retry Delay Seconds",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "form_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Form Ids",
+            "type": "array"
+          },
+          "forms": {
+            "items": {
+              "$ref": "#/components/schemas/FormResponse"
+            },
+            "title": "Forms",
+            "type": "array"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_reminder_scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reminder Scheduled At"
+          },
+          "reminder_enabled": {
+            "title": "Reminder Enabled",
+            "type": "boolean"
+          },
+          "reminder_payload": {
+            "additionalProperties": true,
+            "title": "Reminder Payload",
+            "type": "object"
+          },
+          "reminder_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder Title"
+          },
+          "schedule_crons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Schedule Crons",
+            "type": "array"
+          },
+          "skip_retry_delay_seconds": {
+            "title": "Skip Retry Delay Seconds",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "title",
+          "form_ids",
+          "forms",
+          "schedule_crons",
+          "is_active",
+          "reminder_enabled",
+          "reminder_payload",
+          "skip_retry_delay_seconds",
+          "delivery_retry_delay_seconds",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FormGroupResponse",
+        "type": "object"
+      },
+      "FormGroupUpdate": {
+        "properties": {
+          "delivery_retry_delay_seconds": {
+            "default": 3600,
+            "maximum": 2592000.0,
+            "minimum": 60.0,
+            "title": "Delivery Retry Delay Seconds",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "form_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Form Ids",
+            "type": "array"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "reminder_enabled": {
+            "default": false,
+            "title": "Reminder Enabled",
+            "type": "boolean"
+          },
+          "reminder_payload": {
+            "additionalProperties": true,
+            "title": "Reminder Payload",
+            "type": "object"
+          },
+          "reminder_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder Title"
+          },
+          "schedule_crons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Schedule Crons",
+            "type": "array"
+          },
+          "skip_retry_delay_seconds": {
+            "default": 3600,
+            "maximum": 2592000.0,
+            "minimum": 60.0,
+            "title": "Skip Retry Delay Seconds",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "form_ids"
+        ],
+        "title": "FormGroupUpdate",
+        "type": "object"
+      },
       "FormMutationResponse": {
         "properties": {
           "form": {
@@ -830,6 +1243,25 @@
         "title": "GoogleLoginRequest",
         "type": "object"
       },
+      "GroupAnswerItem": {
+        "properties": {
+          "answers_data": {
+            "additionalProperties": true,
+            "title": "Answers Data",
+            "type": "object"
+          },
+          "form_id": {
+            "title": "Form Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "form_id",
+          "answers_data"
+        ],
+        "title": "GroupAnswerItem",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -930,6 +1362,17 @@
             "title": "Due In Seconds",
             "type": "integer"
           },
+          "form_group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Group Id"
+          },
           "form_id": {
             "anyOf": [
               {
@@ -1014,6 +1457,17 @@
               }
             ],
             "title": "Enqueued At"
+          },
+          "form_group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Group Id"
           },
           "form_id": {
             "anyOf": [
@@ -1754,6 +2208,52 @@
         ]
       }
     },
+    "/answers": {
+      "post": {
+        "operationId": "save_answer_answers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerCreateWithFormId"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerSaveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Save Answer",
+        "tags": [
+          "Answers"
+        ]
+      }
+    },
     "/auth/assign-admin": {
       "post": {
         "operationId": "assign_admin_auth_assign_admin_post",
@@ -1979,11 +2479,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LogoutRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LogoutRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -2492,6 +2999,355 @@
         "summary": "Confirm Email",
         "tags": [
           "Authorization"
+        ]
+      }
+    },
+    "/form-groups": {
+      "get": {
+        "operationId": "list_form_groups_form_groups_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FormGroupResponse"
+                  },
+                  "title": "Response List Form Groups Form Groups Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Form Groups",
+        "tags": [
+          "Form Groups"
+        ]
+      },
+      "post": {
+        "operationId": "create_form_group_form_groups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormGroupCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormGroupMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Form Group",
+        "tags": [
+          "Form Groups"
+        ]
+      }
+    },
+    "/form-groups/{group_id}": {
+      "get": {
+        "operationId": "get_form_group_form_groups__group_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormGroupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Form Group",
+        "tags": [
+          "Form Groups"
+        ]
+      },
+      "put": {
+        "operationId": "update_form_group_form_groups__group_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormGroupUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormGroupMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Form Group",
+        "tags": [
+          "Form Groups"
+        ]
+      }
+    },
+    "/form-groups/{group_id}/answers": {
+      "post": {
+        "operationId": "save_form_group_answers_form_groups__group_id__answers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormGroupAnswerCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormGroupAnswerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Save Form Group Answers",
+        "tags": [
+          "Form Groups"
+        ]
+      }
+    },
+    "/form-groups/{group_id}/archive": {
+      "post": {
+        "operationId": "archive_form_group_form_groups__group_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormGroupMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Archive Form Group",
+        "tags": [
+          "Form Groups"
+        ]
+      }
+    },
+    "/form-groups/{group_id}/restore": {
+      "post": {
+        "operationId": "restore_form_group_form_groups__group_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormGroupMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Restore Form Group",
+        "tags": [
+          "Form Groups"
         ]
       }
     },
@@ -3201,6 +4057,22 @@
           },
           {
             "in": "query",
+            "name": "form_group_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Form Group Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "due_only",
             "required": false,
             "schema": {
@@ -3456,11 +4328,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReminderSkipRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReminderSkipRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {

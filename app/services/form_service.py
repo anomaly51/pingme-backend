@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user_model import Form, User
@@ -95,7 +95,9 @@ class FormService:
         return form
 
     async def delete_form(self, form_id: int, user: User) -> None:
-        await self.archive_form(form_id, user)
+        await self.get_form_by_id(form_id, user)
+        await self.db.execute(delete(Form).where(Form.id == form_id, Form.user_id == user.id))
+        await self.db.commit()
 
 
 def form_to_response(form: Form) -> FormResponse:

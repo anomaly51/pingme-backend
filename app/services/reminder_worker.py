@@ -57,6 +57,7 @@ async def handle_reminder_message(message: IncomingMessage) -> None:
         reminder_payload = {
             "id": reminder.id,
             "form_id": reminder.form_id,
+            "form_group_id": reminder.form_group_id,
             "title": reminder.title,
             "payload": reminder.payload,
             "retry_delay_seconds": reminder.retry_delay_seconds,

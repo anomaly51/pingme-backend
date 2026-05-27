@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 os.environ.setdefault("TESTING", "True")
 
-from app.api.v1.endpoints import admin, answers, auth, forms, reminders
+from app.api.v1.endpoints import admin, answers, auth, form_groups, forms, reminders
 from app.core.security import create_access_token, get_password_hash
 from app.models.user_model import User
 from db.database import Base, get_db
@@ -44,6 +44,7 @@ test_app = FastAPI()
 test_app.include_router(auth.router)
 test_app.include_router(auth.users_router)
 test_app.include_router(forms.router)
+test_app.include_router(form_groups.router)
 test_app.include_router(answers.router)
 test_app.include_router(reminders.router)
 test_app.include_router(admin.router)

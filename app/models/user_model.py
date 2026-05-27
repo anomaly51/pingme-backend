@@ -126,14 +126,83 @@ class Form(Base):
     )
 
 
+class FormGroup(Base):
+    __tablename__ = "form_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    schedule_crons: Mapped[list] = mapped_column(JSON, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    reminder_title: Mapped[str | None] = mapped_column(String, nullable=True)
+    reminder_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    skip_retry_delay_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3600, server_default="3600"
+    )
+    delivery_retry_delay_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3600, server_default="3600"
+    )
+    last_reminder_scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=text("now()"),
+    )
+
+
+class FormGroupItem(Base):
+    __tablename__ = "form_group_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("form_groups.id", ondelete="CASCADE"), index=True
+    )
+    form_id: Mapped[int] = mapped_column(ForeignKey("forms.id", ondelete="CASCADE"), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+    __table_args__ = (Index("uq_form_group_item_form", "group_id", "form_id", unique=True),)
+
+
+class AnswerSubmission(Base):
+    __tablename__ = "answer_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    form_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("form_groups.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=text("now()"),
+    )
+
+
 class Answer(Base):
     __tablename__ = "answers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     form_id: Mapped[int] = mapped_column(ForeignKey("forms.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    submission_id: Mapped[int | None] = mapped_column(
+        ForeignKey("answer_submissions.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     answers_data: Mapped[dict] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
 
 
 class Reminder(Base):
@@ -143,6 +212,9 @@ class Reminder(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     form_id: Mapped[int | None] = mapped_column(
         ForeignKey("forms.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    form_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("form_groups.id", ondelete="CASCADE"), index=True, nullable=True
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -177,6 +249,14 @@ class Reminder(Base):
             unique=True,
             postgresql_where=text("form_id IS NOT NULL AND status IN ('pending', 'skipped')"),
             sqlite_where=text("form_id IS NOT NULL AND status IN ('pending', 'skipped')"),
+        ),
+        Index(
+            "uq_active_form_group_reminder",
+            "user_id",
+            "form_group_id",
+            unique=True,
+            postgresql_where=text("form_group_id IS NOT NULL AND status IN ('pending', 'skipped')"),
+            sqlite_where=text("form_group_id IS NOT NULL AND status IN ('pending', 'skipped')"),
         ),
     )
     updated_at: Mapped[datetime] = mapped_column(
