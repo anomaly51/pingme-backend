@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   deploy:
+    # Keep this legacy reusable workflow on the latest published toolkit tag.
     uses: anomaly51/github-actions-toolkit/.github/workflows/argocd-app-release.yml@v11
     with:
       app-name: PingMe Backend
